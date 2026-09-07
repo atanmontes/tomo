@@ -20,7 +20,6 @@ export async function GET(request: Request) {
     const seriesUrl = `https://weebcentral.com/series/${seriesId}`;
     const fullListUrl = `${seriesUrl}/full-chapter-list`;
 
-    // 1. Obtenemos la página principal de la serie para sacar la portada y la sinopsis
     const seriesRes = await fetch(seriesUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -29,7 +28,6 @@ export async function GET(request: Request) {
     const seriesHtml = await seriesRes.text();
     const $series = cheerio.load(seriesHtml);
 
-    // Extraemos título, portada y descripción de la serie
     const mangaTitle = $series('h1').first().text().trim() || 'Manga sin título';
     const coverUrl = $series('img').filter((_, el) => {
       const src = $series(el).attr('src') || '';
@@ -38,7 +36,6 @@ export async function GET(request: Request) {
     
     const synopsis = $series('p').filter((_, el) => $series(el).text().length > 50).first().text().trim() || 'Sin descripción disponible.';
 
-    // 2. Obtenemos la lista completa de capítulos con los headers de HTMX
     const listRes = await fetch(fullListUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -55,13 +52,9 @@ export async function GET(request: Request) {
     $('a').each((_, el) => {
       const href = $(el).attr('href');
       if (href && href.includes('/chapters/')) {
-        // Limpiamos el texto basura de WeebCentral ("Chapter X Last Read...")
         let rawText = $(el).text().replace(/\s+/g, ' ').trim();
-        
-        // Intentamos extraer solo el número del capítulo o formatearlo limpiamente
         const matchNum = rawText.match(/Chapter\s*([\d\.]+)/i);
         const chapterTitle = matchNum ? `Capítulo ${matchNum[1]}` : rawText.replace(/Last Read.*$/i, '').trim();
-
         const fullChapterUrl = href.startsWith('http') ? href : `https://weebcentral.com${href}`;
 
         if (!chapters.some((ch) => ch.url === fullChapterUrl)) {
