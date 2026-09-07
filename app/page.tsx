@@ -145,7 +145,7 @@ export default function Home() {
           {library.length === 0 ? (
             <div className="text-center py-20 text-neutral-600 border border-dashed border-neutral-900 rounded-3xl space-y-2">
               <p className="text-sm">Tu biblioteca está vacía.</p>
-              <p className="text-xs text-neutral-600">Haz clic en "Añadir Manga" arriba a la derecha para empezar.</p>
+              <p className="text-xs text-neutral-600">Haz clic en &quot;Añadir Manga&quot; arriba a la derecha para empezar.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
