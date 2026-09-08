@@ -50,19 +50,38 @@ function getImageSource(
 async function fetchWeebCentral(
   url: string,
   options: RequestInit = {}
-): Promise<Response> {
-  return fetch(url, {
+) {
+  const response = await fetch(url, {
     ...options,
     headers: {
       'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
-      Accept:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+      'Accept':
         'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      Referer: `${WEBCENTRAL}/`,
+      'Accept-Language':
+        'es-MX,es;q=0.9,en;q=0.8',
+      'Referer':
+        'https://weebcentral.com/',
       ...options.headers,
     },
-    cache: 'no-store',
   });
+
+  if (!response.ok) {
+    const body = await response.text();
+
+    console.error('WEBCENTRAL ERROR:', {
+      url,
+      status: response.status,
+      statusText: response.statusText,
+      body: body.slice(0, 1000),
+    });
+
+    throw new Error(
+      `No se pudo cargar el manga. Status: ${response.status}`
+    );
+  }
+
+  return response;
 }
 
 async function getManga(seriesUrl: string) {
