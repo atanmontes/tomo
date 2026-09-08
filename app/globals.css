@@ -25,3 +25,12 @@ body {
     )
     rgb(var(--background-start-rgb));
 }
+
+.tomo-reader-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tomo-reader-scroll::-webkit-scrollbar {
+  display: none;
+}
