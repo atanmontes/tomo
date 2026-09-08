@@ -1374,17 +1374,6 @@ return ( <main className="min-h-screen bg-neutral-950 text-neutral-100 p-6 md:p-
 
                         <button
                           onClick={() =>
-                            openBuiltInReader(
-                              chapter
-                            )
-                          }
-                          className="text-xs text-neutral-300 bg-neutral-950 px-3 py-1.5 rounded-md border border-neutral-800 group-hover:border-pink-500/50 hover:text-pink-400 shrink-0"
-                        >
-                          Leer →
-                        </button>
-
-                        <button
-                          onClick={() =>
                             toggleChapterRead(
                               chapter.id
                             )
