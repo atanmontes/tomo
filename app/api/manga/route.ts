@@ -178,91 +178,212 @@ async function getManga(seriesUrl: string) {
     });
   }
 
-  // ------------------------------------------------------------
-  // CAPÍTULOS
-  // ------------------------------------------------------------
+        // ------------------------------------------------------------
+      // CAPÍTULOS
+      // ------------------------------------------------------------
 
-  const chapters: Chapter[] = [];
-  const seenUrls = new Set<string>();
+      const chapters: Chapter[] = [];
+      const seenUrls = new Set<string>();
 
-  $('a[href*="/chapters/"]').each((_, el) => {
-    const href = $(el).attr('href');
+      // WeebCentral no muestra todos los capítulos en la página
+      // principal del manga. La lista completa está en:
+      // /series/{id}/full-chapter-list
 
-    if (!href) return;
+      let fullChapterListUrl = '';
 
-    const fullChapterUrl = absoluteUrl(href, seriesUrl);
+      try {
+        const parsedSeriesUrl = new URL(seriesUrl);
+        const match = parsedSeriesUrl.pathname.match(
+          /\/series\/([^/]+)/i
+        );
 
-    if (!fullChapterUrl) return;
-
-    // Evitar duplicados.
-    if (seenUrls.has(fullChapterUrl)) return;
-
-    seenUrls.add(fullChapterUrl);
-
-    const rawText = $(el)
-      .text()
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    // ----------------------------------------------------------
-    // ID ÚNICO DEL CAPÍTULO
-    // ----------------------------------------------------------
-
-    // El ID sale de la propia URL.
-    //
-    // Ejemplo:
-    // /chapters/abc123
-    //
-    // ID:
-    // abc123
-    //
-    // De esta forma cada capítulo tiene un identificador distinto
-    // y localStorage puede guardar su progreso individualmente.
-    let chapterId = '';
-
-    try {
-      const parsed = new URL(fullChapterUrl);
-
-      const match = parsed.pathname.match(
-        /\/chapters\/([^/]+)/i
-      );
-
-      if (match?.[1]) {
-        chapterId = match[1];
+        if (match?.[1]) {
+          fullChapterListUrl =
+            `${WEBCENTRAL}/series/${match[1]}/full-chapter-list`;
+        }
+      } catch {
+        // Fallback: usamos la URL original si algo falla.
       }
-    } catch {
-      // Si por alguna razón no se puede parsear la URL,
-      // usamos la URL completa como fallback.
-    }
 
-    if (!chapterId) {
-      chapterId = fullChapterUrl;
-    }
+      if (!fullChapterListUrl) {
+        fullChapterListUrl =
+          `${seriesUrl.replace(/\/$/, '')}/full-chapter-list`;
+      }
 
-    // ----------------------------------------------------------
-    // NOMBRE DEL CAPÍTULO
-    // ----------------------------------------------------------
+      try {
+        const chaptersResponse =
+          await fetchWeebCentral(fullChapterListUrl);
 
-    const chapterNumber = rawText.match(
-      /Chapter\s*([\d]+(?:\.[\d]+)?)/i
-    );
+        if (chaptersResponse.ok) {
+          const chaptersHtml =
+            await chaptersResponse.text();
 
-    let chapterTitle = rawText;
+          const chaptersPage =
+            cheerio.load(chaptersHtml);
 
-    if (chapterNumber?.[1]) {
-      chapterTitle = `Capítulo ${chapterNumber[1]}`;
-    }
+          chaptersPage(
+            'a[href*="/chapters/"]'
+          ).each((_, el) => {
+            const href =
+              chaptersPage(el).attr('href');
 
-    if (!chapterTitle) {
-      chapterTitle = 'Capítulo';
-    }
+            if (!href) return;
 
-    chapters.push({
-      id: chapterId,
-      title: chapterTitle,
-      url: fullChapterUrl,
-    });
-  });
+            const fullChapterUrl =
+              absoluteUrl(
+                href,
+                fullChapterListUrl
+              );
+
+            if (!fullChapterUrl) return;
+
+            if (seenUrls.has(fullChapterUrl)) {
+              return;
+            }
+
+            seenUrls.add(fullChapterUrl);
+
+            const rawText =
+              chaptersPage(el)
+                .text()
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            // --------------------------------------------------------
+            // ID ÚNICO DEL CAPÍTULO
+            // --------------------------------------------------------
+
+            let chapterId = '';
+
+            try {
+              const parsed =
+                new URL(fullChapterUrl);
+
+              const match =
+                parsed.pathname.match(
+                  /\/chapters\/([^/]+)/i
+                );
+
+              if (match?.[1]) {
+                chapterId = match[1];
+              }
+            } catch {
+              // Fallback abajo.
+            }
+
+            if (!chapterId) {
+              chapterId = fullChapterUrl;
+            }
+
+            // --------------------------------------------------------
+            // NOMBRE DEL CAPÍTULO
+            // --------------------------------------------------------
+
+            const chapterNumber =
+              rawText.match(
+                /(?:Chapter|Ch\.?|Episode|Ep\.?)\s*([\d]+(?:\.[\d]+)?)/i
+              );
+
+            let chapterTitle = rawText;
+
+            if (chapterNumber?.[1]) {
+              chapterTitle =
+                `Capítulo ${chapterNumber[1]}`;
+            }
+
+            if (!chapterTitle) {
+              chapterTitle = 'Capítulo';
+            }
+
+            chapters.push({
+              id: chapterId,
+              title: chapterTitle,
+              url: fullChapterUrl,
+            });
+          });
+        }
+      } catch (error) {
+        console.error(
+          'Error cargando lista completa de capítulos:',
+          error
+        );
+      }
+
+      // ------------------------------------------------------------
+      // FALLBACK
+      // ------------------------------------------------------------
+
+      // Si /full-chapter-list falla, usamos la página principal
+      // para no dejar el manga sin capítulos.
+
+      if (chapters.length === 0) {
+        $('a[href*="/chapters/"]').each((_, el) => {
+          const href = $(el).attr('href');
+
+          if (!href) return;
+
+          const fullChapterUrl =
+            absoluteUrl(href, seriesUrl);
+
+          if (!fullChapterUrl) return;
+
+          if (seenUrls.has(fullChapterUrl)) {
+            return;
+          }
+
+          seenUrls.add(fullChapterUrl);
+
+          const rawText =
+            $(el)
+              .text()
+              .replace(/\s+/g, ' ')
+              .trim();
+
+          let chapterId = '';
+
+          try {
+            const parsed =
+              new URL(fullChapterUrl);
+
+            const match =
+              parsed.pathname.match(
+                /\/chapters\/([^/]+)/i
+              );
+
+            if (match?.[1]) {
+              chapterId = match[1];
+            }
+          } catch {
+            // Fallback abajo.
+          }
+
+          if (!chapterId) {
+            chapterId = fullChapterUrl;
+          }
+
+          const chapterNumber =
+            rawText.match(
+              /(?:Chapter|Ch\.?|Episode|Ep\.?)\s*([\d]+(?:\.[\d]+)?)/i
+            );
+
+          let chapterTitle = rawText;
+
+          if (chapterNumber?.[1]) {
+            chapterTitle =
+              `Capítulo ${chapterNumber[1]}`;
+          }
+
+          if (!chapterTitle) {
+            chapterTitle = 'Capítulo';
+          }
+
+          chapters.push({
+            id: chapterId,
+            title: chapterTitle,
+            url: fullChapterUrl,
+          });
+        });
+      }
 
   // ------------------------------------------------------------
   // ORDENAR CAPÍTULOS
