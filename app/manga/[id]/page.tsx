@@ -49,9 +49,6 @@ export default function MangaDetail() {
   const [searchFilter, setSearchFilter] =
     useState("");
 
-  const [sortOrder, setSortOrder] =
-    useState<"asc" | "desc">("asc");
-
   /* ============================================================
      LECTOR
   ============================================================ */
@@ -77,11 +74,8 @@ export default function MangaDetail() {
   const [chapterSearch, setChapterSearch] =
     useState("");
 
-  const [readerFullscreen, setReaderFullscreen] =
-    useState(false);
-
   const [readerMode, setReaderMode] =
-    useState<"vertical" | "page">("vertical");
+    useState<"vertical" | "page">("page");
 
   const [currentPage, setCurrentPage] =
     useState(0);
@@ -417,7 +411,6 @@ export default function MangaDetail() {
     setReaderError("");
     setReaderLoading(true);
     setShowChapterList(false);
-    setReaderFullscreen(false);
 
     try {
       const res = await fetch(
@@ -601,7 +594,6 @@ export default function MangaDetail() {
     setChapterImages([]);
     setReaderError("");
     setShowChapterList(false);
-    setReaderFullscreen(false);
     setReaderLoading(false);
   };
 
@@ -641,19 +633,8 @@ export default function MangaDetail() {
     const handleKeyDown = (
       event: KeyboardEvent
     ) => {
-      if (
-        event.key === "Escape"
-      ) {
-        if (
-          readerFullscreen
-        ) {
-          setReaderFullscreen(
-            false
-          );
-        } else {
-          closeReader();
-        }
-
+      if (event.key === "Escape") {
+        closeReader();
         return;
       }
 
@@ -713,7 +694,6 @@ export default function MangaDetail() {
     };
   }, [
     activeChapter,
-    readerFullscreen,
     readerMode,
     chapterImages.length,
   ]);
@@ -827,19 +807,12 @@ export default function MangaDetail() {
 
   if (activeChapter) {
     return (
-      <div
-        className={
-          readerFullscreen
-            ? "fixed inset-0 bg-black text-neutral-100 z-[9999] flex flex-col"
-            : "fixed inset-0 bg-neutral-950 text-neutral-100 z-50 flex flex-col"
-        }
-      >
+      <div className="fixed inset-0 bg-neutral-950 text-neutral-100 z-50 flex flex-col">
 
         {/* ======================================================
            HEADER
         ====================================================== */}
 
-        {!readerFullscreen && (
           <header className="bg-neutral-900 border-b border-neutral-800 px-3 md:px-6 py-3 flex items-center justify-between gap-3 shrink-0">
 
             {/* CAPÍTULO ACTUAL */}
@@ -867,7 +840,7 @@ export default function MangaDetail() {
                       : "vertical"
                   );
                 }}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700 transition-colors"
+                className="h-9 px-3 rounded-lg text-xs font-bold border bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700 transition-colors"
                 title="Cambiar modo de lectura"
               >
                 <span className="hidden sm:inline">
@@ -893,7 +866,7 @@ export default function MangaDetail() {
                     !showChapterList
                   )
                 }
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                className={`h-9 flex items-center gap-1.5 px-3 rounded-lg text-xs font-bold border transition-colors ${
                   showChapterList
                     ? "bg-pink-500 text-white border-pink-500"
                     : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700"
@@ -957,26 +930,6 @@ export default function MangaDetail() {
                 </span>
               </button>
 
-              {/* PANTALLA COMPLETA */}
-
-              <button
-                onClick={() =>
-                  setReaderFullscreen(
-                    true
-                  )
-                }
-                className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700 transition-colors"
-                title="Pantalla completa"
-              >
-                <span className="hidden sm:inline">
-                  Pantalla completa
-                </span>
-
-                <span className="sm:hidden">
-                  ⛶
-                </span>
-              </button>
-
               {/* LEÍDO */}
 
               <button
@@ -985,10 +938,8 @@ export default function MangaDetail() {
                     activeChapter.id
                   )
                 }
-                className={`hidden sm:block px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                  readChapters.includes(
-                    activeChapter.id
-                  )
+                className={`hidden sm:block h-9 px-3 rounded-lg text-xs font-bold border transition-colors ${
+                  readChapters.includes(activeChapter.id)
                     ? "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30"
                     : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700"
                 }`}
@@ -1035,76 +986,6 @@ export default function MangaDetail() {
 
             </div>
           </header>
-        )}
-
-        {/* ======================================================
-           CONTROLES DE PANTALLA COMPLETA
-        ====================================================== */}
-
-        {readerFullscreen && (
-          <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-
-            <button
-              onClick={() => {
-                setReaderMode(
-                  readerMode ===
-                    "vertical"
-                    ? "page"
-                    : "vertical"
-                );
-              }}
-              className="bg-neutral-900/95 border border-neutral-700 hover:bg-neutral-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-xl transition-colors"
-            >
-              {readerMode ===
-              "vertical"
-                ? "Página"
-                : "Vertical"}
-            </button>
-
-            <button
-              onClick={() =>
-                setReaderFullscreen(
-                  false
-                )
-              }
-              className="bg-neutral-900/95 border border-neutral-700 hover:bg-neutral-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-xl transition-colors"
-            >
-              Salir
-            </button>
-
-            <button
-              onClick={closeReader}
-              className="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-neutral-900/95 border border-neutral-700 text-neutral-300 hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-400 shadow-xl transition-all"
-              title="Cerrar lector"
-              aria-label="Cerrar lector"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <line
-                  x1="6"
-                  y1="6"
-                  x2="18"
-                  y2="18"
-                />
-
-                <line
-                  x1="18"
-                  y1="6"
-                  x2="6"
-                  y2="18"
-                />
-              </svg>
-            </button>
-
-          </div>
-        )}
 
         {/* ======================================================
            DRAWER
@@ -1381,7 +1262,6 @@ export default function MangaDetail() {
            FOOTER DEL LECTOR
         ====================================================== */}
 
-        {!readerFullscreen && (
           <footer className="bg-neutral-900 border-t border-neutral-800 px-3 py-2.5 shrink-0">
 
             <div className="flex items-center justify-between max-w-5xl mx-auto gap-3">
@@ -1450,7 +1330,6 @@ export default function MangaDetail() {
 
             </div>
           </footer>
-        )}
 
       </div>
     );
@@ -1475,21 +1354,6 @@ export default function MangaDetail() {
             href="/"
             className="inline-flex items-center gap-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-pink-500/40 text-neutral-300 hover:text-pink-400 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 group"
           >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="transition-transform duration-200 group-hover:-translate-x-0.5"
-            >
-              <path d="M19 12H5" />
-
-              <path d="M12 19l-7-7 7-7" />
-            </svg>
 
             Volver a la biblioteca
           </Link>
@@ -1613,23 +1477,6 @@ export default function MangaDetail() {
                     className="bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500 w-full sm:w-48"
                   />
 
-                  <button
-                    onClick={() =>
-                      setSortOrder(
-                        sortOrder ===
-                          "asc"
-                          ? "desc"
-                          : "asc"
-                      )
-                    }
-                    className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 px-3 py-1.5 rounded-xl text-xs font-medium text-neutral-300 transition-colors cursor-pointer shrink-0"
-                  >
-                    {sortOrder ===
-                    "asc"
-                      ? "Asc 📈"
-                      : "Desc 📉"}
-                  </button>
-
                 </div>
               </div>
 
@@ -1650,12 +1497,11 @@ export default function MangaDetail() {
                           chapter.id
                         );
 
+                      const currentChapterId =
+                        activeChapter?.id || lastChapterId;
+
                       const isCurrent =
-                        chapter.id ===
-                        (
-                          activeChapter?.id ??
-                          lastChapterId
-                        );
+                        chapter.id === currentChapterId;
 
                       return (
                         <div
@@ -1700,17 +1546,6 @@ export default function MangaDetail() {
                           </button>
 
                           <div className="flex items-center gap-2 shrink-0">
-
-                            <button
-                              onClick={() =>
-                                openBuiltInReader(
-                                  chapter
-                                )
-                              }
-                              className="text-xs text-neutral-300 bg-neutral-950 px-3 py-1.5 rounded-md border border-neutral-800 group-hover:border-pink-500/50 hover:text-pink-400 shrink-0 transition-colors"
-                            >
-                              Leer
-                            </button>
 
                             <button
                               onClick={() =>
