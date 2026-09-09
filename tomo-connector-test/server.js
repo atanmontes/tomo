@@ -40,48 +40,20 @@ function sendJson(res, statusCode, data) {
 // ==========================================
 
 function fetchHtml(url) {
-  return new Promise((resolve, reject) => {
-    const request = https.get(
-      url,
-      {
-        headers: HEADERS,
-      },
-      (response) => {
-        let html = "";
+  return fetch(url, {
+    method: "GET",
+    headers: HEADERS,
+    redirect: "follow",
+  }).then(async (response) => {
+    const html = await response.text();
 
-        response.setEncoding("utf8");
-
-        response.on("data", (chunk) => {
-          html += chunk;
-        });
-
-        response.on("end", () => {
-          if (response.statusCode !== 200) {
-            reject(
-              new Error(
-                `WeebCentral respondió HTTP ${response.statusCode}`
-              )
-            );
-
-            return;
-          }
-
-          resolve(html);
-        });
-      }
-    );
-
-    request.on("error", (error) => {
-      reject(error);
-    });
-
-    request.setTimeout(15000, () => {
-      request.destroy(
-        new Error(
-          "Tiempo de espera agotado al conectar con WeebCentral"
-        )
+    if (!response.ok) {
+      throw new Error(
+        `WeebCentral respondió HTTP ${response.status}`
       );
-    });
+    }
+
+    return html;
   });
 }
 
