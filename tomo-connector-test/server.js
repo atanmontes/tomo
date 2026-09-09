@@ -338,7 +338,7 @@ function parseSeries(html, seriesUrl) {
 
   if (seriesId) {
     cover =
-      `${"https://temp.compsci88.com"}/cover/normal/${seriesId}.webp`;
+      `https://temp.compsci88.com/cover/normal/${seriesId}.webp`;
   }
 
   return {
@@ -396,36 +396,84 @@ function parseChapters(html) {
       }
 
       // ======================================
-      // OBTENER TÍTULO LIMPIO
+      // OBTENER EL TÍTULO REAL
       // ======================================
-
-      const rawText = cleanText(
-        $(element).text()
-      );
-
-      const chapterMatch =
-        rawText.match(
-          /^(Chapter\s+\d+(?:\.\d+)?)/i
-        );
+      //
+      // WeebCentral estructura los capítulos así:
+      //
+      // <span class="grow ...">
+      //   <span>Plot 1</span>
+      //   <span class="link-info">
+      //     ...
+      //     <span>Last Read</span>
+      //   </span>
+      // </span>
+      //
+      // Por eso tomamos únicamente el primer
+      // span dentro de .grow.
+      //
+      // Esto funciona para:
+      // Plot 1
+      // Chapter 1
+      // episode. 1
+      // No. 1
+      // etc.
+      // ======================================
 
       let title = "";
 
-      if (chapterMatch) {
-        title =
-          chapterMatch[1].trim();
-      } else {
-        const clone =
-          $(element).clone();
+      const titleElement =
+        $(element)
+          .find("span.grow > span")
+          .not(".link-info")
+          .first();
 
-        clone.children().remove();
-
+      if (titleElement.length) {
         title = cleanText(
-          clone.text()
+          titleElement.text()
         );
       }
 
+      // ======================================
+      // FALLBACK
+      // ======================================
+      //
+      // Si WeebCentral cambia ligeramente
+      // la estructura, intentamos obtener el
+      // primer span dentro de .grow.
+      // ======================================
+
       if (!title) {
-        title = rawText;
+        const growElement =
+          $(element)
+            .find("span.grow")
+            .first();
+
+        if (growElement.length) {
+          title = cleanText(
+            growElement
+              .children("span")
+              .first()
+              .text()
+          );
+        }
+      }
+
+      // ======================================
+      // ÚLTIMO FALLBACK
+      // ======================================
+
+      if (!title) {
+        title = cleanText(
+          $(element).text()
+        );
+
+        // Si por algún cambio de HTML se colara
+        // "Last Read", lo eliminamos solamente
+        // como último recurso.
+        title = title
+          .replace(/\bLast Read\b/gi, "")
+          .trim();
       }
 
       chapters.push({
