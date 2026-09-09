@@ -12,6 +12,8 @@ const WEBCENTRAL_HOSTS = [
 const IMAGE_HOSTS = [
   'official.lowee.us',
   'temp.compsci88.com',
+  'scans.lastation.us',
+  'hot.planeptune.us',
 ];
 
 type Chapter = {
