@@ -699,7 +699,7 @@ export default function MangaDetail() {
   ]);
 
   /* ============================================================
-     FILTRO / ORDEN
+     FILTRO
   ============================================================ */
 
   const filteredChapters =
@@ -813,179 +813,179 @@ export default function MangaDetail() {
            HEADER
         ====================================================== */}
 
-          <header className="bg-neutral-900 border-b border-neutral-800 px-3 md:px-6 py-3 flex items-center justify-between gap-3 shrink-0">
+        <header className="bg-neutral-900 border-b border-neutral-800 px-3 md:px-6 py-3 flex items-center justify-between gap-3 shrink-0">
 
-            {/* CAPÍTULO ACTUAL */}
+          {/* CAPÍTULO ACTUAL */}
 
-            <div className="min-w-0 flex items-center gap-2">
-              <div className="min-w-0">
-                <h2 className="text-sm font-bold truncate text-white">
-                  {activeChapter.title}
-                </h2>
-              </div>
+          <div className="min-w-0 flex items-center gap-2">
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold truncate text-white">
+                {activeChapter.title}
+              </h2>
             </div>
+          </div>
 
-            {/* CONTROLES */}
+          {/* CONTROLES */}
 
-            <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
 
-              {/* MODO DE LECTURA */}
+            {/* MODO DE LECTURA */}
 
-              <button
-                onClick={() => {
-                  setReaderMode(
-                    readerMode ===
-                      "vertical"
-                      ? "page"
-                      : "vertical"
-                  );
-                }}
-                className="h-9 px-3 rounded-lg text-xs font-bold border bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700 transition-colors"
-                title="Cambiar modo de lectura"
+            <button
+              onClick={() => {
+                setReaderMode(
+                  readerMode ===
+                    "vertical"
+                    ? "page"
+                    : "vertical"
+                );
+              }}
+              className="h-9 px-3 rounded-lg text-xs font-bold border bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700 transition-colors"
+              title="Cambiar modo de lectura"
+            >
+              <span className="hidden sm:inline">
+                {readerMode ===
+                "vertical"
+                  ? "Página por página"
+                  : "Vertical"}
+              </span>
+
+              <span className="sm:hidden">
+                {readerMode ===
+                "vertical"
+                  ? "▣"
+                  : "☰"}
+              </span>
+            </button>
+
+            {/* CAPÍTULOS */}
+
+            <button
+              onClick={() =>
+                setShowChapterList(
+                  !showChapterList
+                )
+              }
+              className={`h-9 flex items-center gap-1.5 px-3 rounded-lg text-xs font-bold border transition-colors ${
+                showChapterList
+                  ? "bg-pink-500 text-white border-pink-500"
+                  : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700"
+              }`}
+              title="Abrir capítulos"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
               >
-                <span className="hidden sm:inline">
-                  {readerMode ===
-                  "vertical"
-                    ? "Página por página"
-                    : "Vertical"}
-                </span>
+                <line
+                  x1="8"
+                  y1="6"
+                  x2="21"
+                  y2="6"
+                />
 
-                <span className="sm:hidden">
-                  {readerMode ===
-                  "vertical"
-                    ? "▣"
-                    : "☰"}
-                </span>
-              </button>
+                <line
+                  x1="8"
+                  y1="12"
+                  x2="21"
+                  y2="12"
+                />
 
-              {/* CAPÍTULOS */}
+                <line
+                  x1="8"
+                  y1="18"
+                  x2="21"
+                  y2="18"
+                />
 
-              <button
-                onClick={() =>
-                  setShowChapterList(
-                    !showChapterList
-                  )
-                }
-                className={`h-9 flex items-center gap-1.5 px-3 rounded-lg text-xs font-bold border transition-colors ${
-                  showChapterList
-                    ? "bg-pink-500 text-white border-pink-500"
-                    : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700"
-                }`}
-                title="Abrir capítulos"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                >
-                  <line
-                    x1="8"
-                    y1="6"
-                    x2="21"
-                    y2="6"
-                  />
+                <line
+                  x1="3"
+                  y1="6"
+                  x2="3.01"
+                  y2="6"
+                />
 
-                  <line
-                    x1="8"
-                    y1="12"
-                    x2="21"
-                    y2="12"
-                  />
+                <line
+                  x1="3"
+                  y1="12"
+                  x2="3.01"
+                  y2="12"
+                />
 
-                  <line
-                    x1="8"
-                    y1="18"
-                    x2="21"
-                    y2="18"
-                  />
+                <line
+                  x1="3"
+                  y1="18"
+                  x2="3.01"
+                  y2="18"
+                />
+              </svg>
 
-                  <line
-                    x1="3"
-                    y1="6"
-                    x2="3.01"
-                    y2="6"
-                  />
+              <span className="hidden sm:inline">
+                Capítulos
+              </span>
+            </button>
 
-                  <line
-                    x1="3"
-                    y1="12"
-                    x2="3.01"
-                    y2="12"
-                  />
+            {/* LEÍDO */}
 
-                  <line
-                    x1="3"
-                    y1="18"
-                    x2="3.01"
-                    y2="18"
-                  />
-                </svg>
-
-                <span className="hidden sm:inline">
-                  Capítulos
-                </span>
-              </button>
-
-              {/* LEÍDO */}
-
-              <button
-                onClick={() =>
-                  toggleChapterRead(
-                    activeChapter.id
-                  )
-                }
-                className={`hidden sm:block h-9 px-3 rounded-lg text-xs font-bold border transition-colors ${
-                  readChapters.includes(activeChapter.id)
-                    ? "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30"
-                    : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700"
-                }`}
-              >
-                {readChapters.includes(
+            <button
+              onClick={() =>
+                toggleChapterRead(
                   activeChapter.id
                 )
-                  ? "✓ Leído"
-                  : "Marcar leído"}
-              </button>
+              }
+              className={`hidden sm:block h-9 px-3 rounded-lg text-xs font-bold border transition-colors ${
+                readChapters.includes(activeChapter.id)
+                  ? "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30"
+                  : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700"
+              }`}
+            >
+              {readChapters.includes(
+                activeChapter.id
+              )
+                ? "✓ Leído"
+                : "Marcar leído"}
+            </button>
 
-              {/* CERRAR */}
+            {/* CERRAR */}
 
-              <button
-                onClick={closeReader}
-                className="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-400 hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-400 transition-all duration-200"
-                title="Cerrar lector"
-                aria-label="Cerrar lector"
+            <button
+              onClick={closeReader}
+              className="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-400 hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-400 transition-all duration-200"
+              title="Cerrar lector"
+              aria-label="Cerrar lector"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                >
-                  <line
-                    x1="6"
-                    y1="6"
-                    x2="18"
-                    y2="18"
-                  />
+                <line
+                  x1="6"
+                  y1="6"
+                  x2="18"
+                  y2="18"
+                />
 
-                  <line
-                    x1="18"
-                    y1="6"
-                    x2="6"
-                    y2="18"
-                  />
-                </svg>
-              </button>
+                <line
+                  x1="18"
+                  y1="6"
+                  x2="6"
+                  y2="18"
+                />
+              </svg>
+            </button>
 
-            </div>
-          </header>
+          </div>
+        </header>
 
         {/* ======================================================
            DRAWER
@@ -1262,74 +1262,74 @@ export default function MangaDetail() {
            FOOTER DEL LECTOR
         ====================================================== */}
 
-          <footer className="bg-neutral-900 border-t border-neutral-800 px-3 py-2.5 shrink-0">
+        <footer className="bg-neutral-900 border-t border-neutral-800 px-3 py-2.5 shrink-0">
 
-            <div className="flex items-center justify-between max-w-5xl mx-auto gap-3">
+          <div className="flex items-center justify-between max-w-5xl mx-auto gap-3">
 
-              {/* ANTERIOR */}
+            {/* ANTERIOR */}
 
-              <button
-                disabled={
-                  readerMode ===
-                  "page"
-                    ? currentPage === 0
-                    : !hasPreviousChapter
-                }
-                onClick={() => {
-                  if (
-                    readerMode ===
-                    "page"
-                  ) {
-                    previousPage();
-                    return;
-                  }
-
-                  previousChapter();
-                }}
-                className="min-w-[105px] h-9 inline-flex items-center justify-center bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed text-white px-4 rounded-lg text-xs font-bold transition-colors"
-              >
-                Anterior
-              </button>
-
-              {/* INDICADOR */}
-
-              <span className="min-w-[70px] text-xs text-neutral-400 text-center tabular-nums">
-
-                {readerMode ===
+            <button
+              disabled={
+                readerMode ===
                 "page"
-                  ? `${currentPage + 1} / ${chapterImages.length}`
-                  : `${activeChapterIndex + 1} / ${orderedChapters.length}`}
-
-              </span>
-
-              {/* SIGUIENTE */}
-
-              <button
-                disabled={
+                  ? currentPage === 0
+                  : !hasPreviousChapter
+              }
+              onClick={() => {
+                if (
                   readerMode ===
                   "page"
-                    ? currentPage >=
-                      chapterImages.length - 1
-                    : !hasNextChapter
+                ) {
+                  previousPage();
+                  return;
                 }
-                onClick={() => {
-                  if (
-                    readerMode ===
-                    "page"
-                  ) {
-                    nextPage();
-                    return;
-                  }
 
-                  nextChapter();
-                }}
-                className="min-w-[105px] h-9 inline-flex items-center justify-center bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed text-white px-4 rounded-lg text-xs font-bold transition-colors"
-              >
-                Siguiente
-              </button>
+                previousChapter();
+              }}
+              className="min-w-[105px] h-9 inline-flex items-center justify-center bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed text-white px-4 rounded-lg text-xs font-bold transition-colors"
+            >
+              Anterior
+            </button>
 
-            </div>
-          </footer>
+            {/* INDICADOR */}
+
+            <span className="min-w-[70px] text-xs text-neutral-400 text-center tabular-nums">
+
+              {readerMode ===
+              "page"
+                ? `${currentPage + 1} / ${chapterImages.length}`
+                : `${activeChapterIndex + 1} / ${orderedChapters.length}`}
+
+            </span>
+
+            {/* SIGUIENTE */}
+
+            <button
+              disabled={
+                readerMode ===
+                "page"
+                  ? currentPage >=
+                    chapterImages.length - 1
+                  : !hasNextChapter
+              }
+              onClick={() => {
+                if (
+                  readerMode ===
+                  "page"
+                ) {
+                  nextPage();
+                  return;
+                }
+
+                nextChapter();
+              }}
+              className="min-w-[105px] h-9 inline-flex items-center justify-center bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed text-white px-4 rounded-lg text-xs font-bold transition-colors"
+            >
+              Siguiente
+            </button>
+
+          </div>
+        </footer>
 
       </div>
     );
@@ -1354,7 +1354,6 @@ export default function MangaDetail() {
             href="/"
             className="inline-flex items-center gap-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-pink-500/40 text-neutral-300 hover:text-pink-400 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 group"
           >
-
             Volver a la biblioteca
           </Link>
 
@@ -1497,11 +1496,7 @@ export default function MangaDetail() {
                           chapter.id
                         );
 
-                      const currentChapterId =
-                        activeChapter?.id || lastChapterId;
-
-                      const isCurrent =
-                        chapter.id === currentChapterId;
+                      const isCurrent = lastChapterId === chapter.id;
 
                       return (
                         <div
