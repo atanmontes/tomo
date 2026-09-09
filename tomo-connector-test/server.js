@@ -3,8 +3,8 @@ const https = require("node:https");
 const { URL } = require("node:url");
 const cheerio = require("cheerio");
 
-const PORT = 3001;
-const HOST = "127.0.0.1";
+const PORT = process.env.PORT || 3001;
+const HOST = "0.0.0.0";
 
 const WEBCENTRAL_BASE = "https://weebcentral.com";
 
@@ -1086,7 +1086,7 @@ server.listen(
     console.log("");
 
     console.log(
-      `Servidor: http://${HOST}:${PORT}`
+      `Servidor escuchando en ${HOST}:${PORT}`
     );
 
     console.log("");
