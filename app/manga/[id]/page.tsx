@@ -49,12 +49,18 @@ export default function MangaDetail() {
   const [searchFilter, setSearchFilter] =
     useState("");
 
+  const [sortOrder, setSortOrder] =
+    useState<"asc" | "desc">("asc");
+
   /* ============================================================
      LECTOR
   ============================================================ */
 
   const [activeChapter, setActiveChapter] =
     useState<Chapter | null>(null);
+
+  const [lastChapterId, setLastChapterId] =
+    useState<string | null>(null);
 
   const [chapterImages, setChapterImages] =
     useState<string[]>([]);
@@ -71,8 +77,11 @@ export default function MangaDetail() {
   const [chapterSearch, setChapterSearch] =
     useState("");
 
+  const [readerFullscreen, setReaderFullscreen] =
+    useState(false);
+
   const [readerMode, setReaderMode] =
-    useState<"vertical" | "page">("page");
+    useState<"vertical" | "page">("vertical");
 
   const [currentPage, setCurrentPage] =
     useState(0);
@@ -104,6 +113,15 @@ export default function MangaDetail() {
         if (Array.isArray(parsedRead)) {
           setReadChapters(parsedRead);
         }
+      }
+
+      const savedLastChapter =
+        localStorage.getItem(
+          `tomo_last_chapter_${id}`
+        );
+
+      if (savedLastChapter) {
+        setLastChapterId(savedLastChapter);
       }
     } catch (error) {
       console.error(
@@ -242,117 +260,116 @@ export default function MangaDetail() {
   };
 
   /* ============================================================
-     EXTRAER NÚMERO DEL CAPÍTULO
+     OBTENER NÚMERO DE CAPÍTULO
   ============================================================ */
 
   const getChapterNumber = (
-    title: string
-  ): number | null => {
+    chapter: Chapter
+  ) => {
     const match =
-      title.match(
-        /(\d+(?:\.\d+)?)/
+      chapter.title.match(
+        /\d+(?:\.\d+)?/
       );
 
-    if (!match) {
-      return null;
-    }
+    if (!match) return null;
 
     const number =
-      Number(match[1]);
+      parseFloat(match[0]);
 
-    return Number.isFinite(number)
-      ? number
-      : null;
+    return Number.isNaN(number)
+      ? null
+      : number;
   };
 
   /* ============================================================
      CAPÍTULOS ORDENADOS NUMÉRICAMENTE
-
-     Funciona con:
-     No. 1
-     Chapter 1
-     Plot 1
-     episode. 1
-     Part 1
-     etc.
   ============================================================ */
 
   const orderedChapters =
     useMemo(() => {
-      if (
-        !mangaData?.chapters
-      ) {
+      if (!mangaData?.chapters) {
         return [];
       }
 
       return mangaData.chapters
-        .map(
-          (
-            chapter,
-            originalIndex
-          ) => ({
-            chapter,
-            originalIndex,
-            number:
-              getChapterNumber(
-                chapter.title
-              ),
-          })
-        )
+        .map((chapter, index) => ({
+          chapter,
+          index,
+        }))
         .sort((a, b) => {
-          /* Ambos tienen número */
-          if (
-            a.number !== null &&
-            b.number !== null
-          ) {
-            if (
-              a.number !==
-              b.number
-            ) {
-              return (
-                a.number -
-                b.number
-              );
-            }
-
-            /*
-             * Si tienen el mismo número,
-             * mantenemos el orden original.
-             */
-            return (
-              a.originalIndex -
-              b.originalIndex
+          const numA =
+            getChapterNumber(
+              a.chapter
             );
-          }
 
-          /* Los que no tienen número van al final */
-          if (
-            a.number !== null
-          ) {
-            return -1;
-          }
+          const numB =
+            getChapterNumber(
+              b.chapter
+            );
 
           if (
-            b.number !== null
+            numA === null &&
+            numB === null
           ) {
-            return 1;
+            return a.index - b.index;
           }
 
-          /*
-           * Si ninguno tiene número,
-           * conservamos el orden original.
-           */
-          return (
-            a.originalIndex -
-            b.originalIndex
-          );
+          if (numA === null) return 1;
+          if (numB === null) return -1;
+
+          if (numA === numB) {
+            return a.index - b.index;
+          }
+
+          return numA - numB;
         })
         .map(
-          (item) =>
-            item.chapter
+          (item) => item.chapter
         );
+    }, [mangaData]);
+
+  /* ============================================================
+     CAPÍTULOS PARA MOSTRAR EN LA LISTA
+     EL ACTUAL / ÚLTIMO LEÍDO VA PRIMERO
+  ============================================================ */
+
+  const displayChapters =
+    useMemo(() => {
+      if (
+        orderedChapters.length === 0
+      ) {
+        return [];
+      }
+
+      const priorityId =
+        activeChapter?.id ??
+        lastChapterId;
+
+      if (!priorityId) {
+        return orderedChapters;
+      }
+
+      const priorityChapter =
+        orderedChapters.find(
+          (chapter) =>
+            chapter.id === priorityId
+        );
+
+      if (!priorityChapter) {
+        return orderedChapters;
+      }
+
+      return [
+        priorityChapter,
+        ...orderedChapters.filter(
+          (chapter) =>
+            chapter.id !== priorityId
+        ),
+      ];
     }, [
-      mangaData?.chapters,
+      orderedChapters,
+      activeChapter,
+      lastChapterId,
     ]);
 
   /* ============================================================
@@ -367,12 +384,40 @@ export default function MangaDetail() {
       chapter.id
     );
 
+    setLastChapterId(
+      chapter.id
+    );
+
+    let savedPage = 0;
+
+    try {
+      const saved =
+        localStorage.getItem(
+          `tomo_page_${id}_${chapter.id}`
+        );
+
+      if (saved !== null) {
+        const parsed =
+          Number(saved);
+
+        if (
+          Number.isInteger(parsed) &&
+          parsed >= 0
+        ) {
+          savedPage = parsed;
+        }
+      }
+    } catch {
+      savedPage = 0;
+    }
+
     setActiveChapter(chapter);
     setChapterImages([]);
-    setCurrentPage(0);
+    setCurrentPage(savedPage);
     setReaderError("");
     setReaderLoading(true);
     setShowChapterList(false);
+    setReaderFullscreen(false);
 
     try {
       const res = await fetch(
@@ -397,15 +442,20 @@ export default function MangaDetail() {
           ? data.images
           : [];
 
-      if (
-        images.length === 0
-      ) {
+      if (images.length === 0) {
         throw new Error(
           "WeebCentral no devolvió ninguna página."
         );
       }
 
       setChapterImages(images);
+
+      setCurrentPage(
+        Math.min(
+          savedPage,
+          images.length - 1
+        )
+      );
     } catch (err: any) {
       console.error(
         "Error cargando capítulo:",
@@ -420,6 +470,34 @@ export default function MangaDetail() {
       setReaderLoading(false);
     }
   };
+
+  /* ============================================================
+     GUARDAR PÁGINA ACTUAL
+  ============================================================ */
+
+  useEffect(() => {
+    if (!activeChapter) return;
+    if (readerMode !== "page") return;
+    if (chapterImages.length === 0) return;
+
+    try {
+      localStorage.setItem(
+        `tomo_page_${id}_${activeChapter.id}`,
+        String(currentPage)
+      );
+    } catch (error) {
+      console.error(
+        "No se pudo guardar la página:",
+        error
+      );
+    }
+  }, [
+    id,
+    activeChapter,
+    currentPage,
+    chapterImages.length,
+    readerMode,
+  ]);
 
   /* ============================================================
      ABRIR AUTOMÁTICAMENTE DESDE ?chapter=
@@ -487,15 +565,43 @@ export default function MangaDetail() {
   };
 
   /* ============================================================
+     CAPÍTULO ANTERIOR
+  ============================================================ */
+
+  const previousChapter = () => {
+    if (!activeChapter) return;
+
+    const currentIndex =
+      orderedChapters.findIndex(
+        (chapter) =>
+          chapter.id ===
+          activeChapter.id
+      );
+
+    if (
+      currentIndex <= 0
+    ) {
+      return;
+    }
+
+    const previous =
+      orderedChapters[
+        currentIndex - 1
+      ];
+
+    openBuiltInReader(previous);
+  };
+
+  /* ============================================================
      CERRAR LECTOR
   ============================================================ */
 
   const closeReader = () => {
     setActiveChapter(null);
     setChapterImages([]);
-    setCurrentPage(0);
     setReaderError("");
     setShowChapterList(false);
+    setReaderFullscreen(false);
     setReaderLoading(false);
   };
 
@@ -526,30 +632,6 @@ export default function MangaDetail() {
   };
 
   /* ============================================================
-     ÍNDICE DEL CAPÍTULO ACTUAL
-  ============================================================ */
-
-  const activeChapterIndex =
-    activeChapter
-      ? orderedChapters.findIndex(
-          (chapter) =>
-            chapter.id ===
-            activeChapter.id
-        )
-      : -1;
-
-  const hasNextChapter =
-    activeChapterIndex !== -1 &&
-    activeChapterIndex <
-      orderedChapters.length - 1;
-
-  const isLastPage =
-    readerMode === "page" &&
-    chapterImages.length > 0 &&
-    currentPage >=
-      chapterImages.length - 1;
-
-  /* ============================================================
      TECLADO
   ============================================================ */
 
@@ -562,7 +644,16 @@ export default function MangaDetail() {
       if (
         event.key === "Escape"
       ) {
-        closeReader();
+        if (
+          readerFullscreen
+        ) {
+          setReaderFullscreen(
+            false
+          );
+        } else {
+          closeReader();
+        }
+
         return;
       }
 
@@ -585,18 +676,6 @@ export default function MangaDetail() {
         event.key === "PageDown"
       ) {
         event.preventDefault();
-
-        if (
-          currentPage >=
-          chapterImages.length - 1
-        ) {
-          if (hasNextChapter) {
-            nextChapter();
-          }
-
-          return;
-        }
-
         nextPage();
       }
 
@@ -634,38 +713,27 @@ export default function MangaDetail() {
     };
   }, [
     activeChapter,
+    readerFullscreen,
     readerMode,
     chapterImages.length,
-    currentPage,
-    hasNextChapter,
   ]);
 
   /* ============================================================
-     FILTRO DE CAPÍTULOS
-
-     Ya no necesitamos volver a ordenar aquí.
-     orderedChapters ya está correctamente ordenado.
+     FILTRO / ORDEN
   ============================================================ */
 
   const filteredChapters =
     useMemo(() => {
-      const filter =
-        searchFilter
-          .trim()
-          .toLowerCase();
-
-      if (!filter) {
-        return orderedChapters;
-      }
-
-      return orderedChapters.filter(
+      return displayChapters.filter(
         (chapter) =>
           chapter.title
             .toLowerCase()
-            .includes(filter)
+            .includes(
+              searchFilter.toLowerCase()
+            )
       );
     }, [
-      orderedChapters,
+      displayChapters,
       searchFilter,
     ]);
 
@@ -674,26 +742,35 @@ export default function MangaDetail() {
   ============================================================ */
 
   const readerChapters =
-    useMemo(() => {
-      const filter =
-        chapterSearch
-          .trim()
-          .toLowerCase();
+    displayChapters.filter(
+      (chapter) =>
+        chapter.title
+          .toLowerCase()
+          .includes(
+            chapterSearch.toLowerCase()
+          )
+    );
 
-      if (!filter) {
-        return orderedChapters;
-      }
+  /* ============================================================
+     ÍNDICE DEL CAPÍTULO ACTUAL
+  ============================================================ */
 
-      return orderedChapters.filter(
-        (chapter) =>
-          chapter.title
-            .toLowerCase()
-            .includes(filter)
-      );
-    }, [
-      orderedChapters,
-      chapterSearch,
-    ]);
+  const activeChapterIndex =
+    activeChapter
+      ? orderedChapters.findIndex(
+          (chapter) =>
+            chapter.id ===
+            activeChapter.id
+        )
+      : -1;
+
+  const hasPreviousChapter =
+    activeChapterIndex > 0;
+
+  const hasNextChapter =
+    activeChapterIndex !== -1 &&
+    activeChapterIndex <
+      orderedChapters.length - 1;
 
   /* ============================================================
      PROGRESO TOTAL
@@ -736,7 +813,7 @@ export default function MangaDetail() {
 
         <Link
           href="/"
-          className="bg-pink-500 text-white font-bold px-4 py-2 rounded-lg text-sm"
+          className="bg-pink-500 hover:bg-pink-600 text-white font-bold px-4 py-2 rounded-xl text-sm transition-colors"
         >
           Volver a la Biblioteca
         </Link>
@@ -750,28 +827,222 @@ export default function MangaDetail() {
 
   if (activeChapter) {
     return (
-      <div className="fixed inset-0 bg-neutral-950 text-neutral-100 z-50 flex flex-col">
+      <div
+        className={
+          readerFullscreen
+            ? "fixed inset-0 bg-black text-neutral-100 z-[9999] flex flex-col"
+            : "fixed inset-0 bg-neutral-950 text-neutral-100 z-50 flex flex-col"
+        }
+      >
 
-        {/* HEADER */}
+        {/* ======================================================
+           HEADER
+        ====================================================== */}
 
-        <header className="bg-neutral-900 border-b border-neutral-800 px-3 md:px-6 py-3 flex items-center justify-between gap-3 shrink-0">
-          <div className="min-w-0 flex items-center gap-2">
-            <div className="min-w-0">
-              <h2 className="text-sm font-bold truncate text-white">
-                {activeChapter.title}
-              </h2>
+        {!readerFullscreen && (
+          <header className="bg-neutral-900 border-b border-neutral-800 px-3 md:px-6 py-3 flex items-center justify-between gap-3 shrink-0">
 
-              <p className="text-[10px] text-neutral-500 hidden sm:block">
-                {activeChapterIndex + 1}{" "}
-                de{" "}
-                {orderedChapters.length}
-              </p>
+            {/* CAPÍTULO ACTUAL */}
+
+            <div className="min-w-0 flex items-center gap-2">
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold truncate text-white">
+                  {activeChapter.title}
+                </h2>
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+            {/* CONTROLES */}
 
-            {/* MODO DE LECTURA */}
+            <div className="flex items-center gap-1.5 shrink-0">
+
+              {/* MODO DE LECTURA */}
+
+              <button
+                onClick={() => {
+                  setReaderMode(
+                    readerMode ===
+                      "vertical"
+                      ? "page"
+                      : "vertical"
+                  );
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700 transition-colors"
+                title="Cambiar modo de lectura"
+              >
+                <span className="hidden sm:inline">
+                  {readerMode ===
+                  "vertical"
+                    ? "Página por página"
+                    : "Vertical"}
+                </span>
+
+                <span className="sm:hidden">
+                  {readerMode ===
+                  "vertical"
+                    ? "▣"
+                    : "☰"}
+                </span>
+              </button>
+
+              {/* CAPÍTULOS */}
+
+              <button
+                onClick={() =>
+                  setShowChapterList(
+                    !showChapterList
+                  )
+                }
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                  showChapterList
+                    ? "bg-pink-500 text-white border-pink-500"
+                    : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700"
+                }`}
+                title="Abrir capítulos"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line
+                    x1="8"
+                    y1="6"
+                    x2="21"
+                    y2="6"
+                  />
+
+                  <line
+                    x1="8"
+                    y1="12"
+                    x2="21"
+                    y2="12"
+                  />
+
+                  <line
+                    x1="8"
+                    y1="18"
+                    x2="21"
+                    y2="18"
+                  />
+
+                  <line
+                    x1="3"
+                    y1="6"
+                    x2="3.01"
+                    y2="6"
+                  />
+
+                  <line
+                    x1="3"
+                    y1="12"
+                    x2="3.01"
+                    y2="12"
+                  />
+
+                  <line
+                    x1="3"
+                    y1="18"
+                    x2="3.01"
+                    y2="18"
+                  />
+                </svg>
+
+                <span className="hidden sm:inline">
+                  Capítulos
+                </span>
+              </button>
+
+              {/* PANTALLA COMPLETA */}
+
+              <button
+                onClick={() =>
+                  setReaderFullscreen(
+                    true
+                  )
+                }
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700 transition-colors"
+                title="Pantalla completa"
+              >
+                <span className="hidden sm:inline">
+                  Pantalla completa
+                </span>
+
+                <span className="sm:hidden">
+                  ⛶
+                </span>
+              </button>
+
+              {/* LEÍDO */}
+
+              <button
+                onClick={() =>
+                  toggleChapterRead(
+                    activeChapter.id
+                  )
+                }
+                className={`hidden sm:block px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                  readChapters.includes(
+                    activeChapter.id
+                  )
+                    ? "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30"
+                    : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700"
+                }`}
+              >
+                {readChapters.includes(
+                  activeChapter.id
+                )
+                  ? "✓ Leído"
+                  : "Marcar leído"}
+              </button>
+
+              {/* CERRAR */}
+
+              <button
+                onClick={closeReader}
+                className="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-400 hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-400 transition-all duration-200"
+                title="Cerrar lector"
+                aria-label="Cerrar lector"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line
+                    x1="6"
+                    y1="6"
+                    x2="18"
+                    y2="18"
+                  />
+
+                  <line
+                    x1="18"
+                    y1="6"
+                    x2="6"
+                    y2="18"
+                  />
+                </svg>
+              </button>
+
+            </div>
+          </header>
+        )}
+
+        {/* ======================================================
+           CONTROLES DE PANTALLA COMPLETA
+        ====================================================== */}
+
+        {readerFullscreen && (
+          <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
 
             <button
               onClick={() => {
@@ -781,45 +1052,35 @@ export default function MangaDetail() {
                     ? "page"
                     : "vertical"
                 );
-
-                setCurrentPage(0);
               }}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700 transition-colors"
-              title="Cambiar modo de lectura"
+              className="bg-neutral-900/95 border border-neutral-700 hover:bg-neutral-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-xl transition-colors"
             >
-              <span className="hidden sm:inline">
-                {readerMode ===
-                "vertical"
-                  ? "Página por página"
-                  : "Vertical"}
-              </span>
-
-              <span className="sm:hidden">
-                {readerMode ===
-                "vertical"
-                  ? "▣"
-                  : "☰"}
-              </span>
+              {readerMode ===
+              "vertical"
+                ? "Página"
+                : "Vertical"}
             </button>
-
-            {/* CAPÍTULOS */}
 
             <button
               onClick={() =>
-                setShowChapterList(
-                  !showChapterList
+                setReaderFullscreen(
+                  false
                 )
               }
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                showChapterList
-                  ? "bg-pink-500 text-white border-pink-500"
-                  : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700"
-              }`}
-              title="Abrir capítulos"
+              className="bg-neutral-900/95 border border-neutral-700 hover:bg-neutral-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-xl transition-colors"
+            >
+              Salir
+            </button>
+
+            <button
+              onClick={closeReader}
+              className="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-neutral-900/95 border border-neutral-700 text-neutral-300 hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-400 shadow-xl transition-all"
+              title="Cerrar lector"
+              aria-label="Cerrar lector"
             >
               <svg
-                width="14"
-                height="14"
+                width="16"
+                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -827,94 +1088,31 @@ export default function MangaDetail() {
                 strokeLinecap="round"
               >
                 <line
-                  x1="8"
+                  x1="6"
                   y1="6"
-                  x2="21"
-                  y2="6"
-                />
-
-                <line
-                  x1="8"
-                  y1="12"
-                  x2="21"
-                  y2="12"
-                />
-
-                <line
-                  x1="8"
-                  y1="18"
-                  x2="21"
+                  x2="18"
                   y2="18"
                 />
 
                 <line
-                  x1="3"
+                  x1="18"
                   y1="6"
-                  x2="3.01"
-                  y2="6"
-                />
-
-                <line
-                  x1="3"
-                  y1="12"
-                  x2="3.01"
-                  y2="12"
-                />
-
-                <line
-                  x1="3"
-                  y1="18"
-                  x2="3.01"
+                  x2="6"
                   y2="18"
                 />
               </svg>
-
-              <span className="hidden sm:inline">
-                Capítulos
-              </span>
             </button>
 
-            {/* LEÍDO */}
-
-            <button
-              onClick={() =>
-                toggleChapterRead(
-                  activeChapter.id
-                )
-              }
-              className={`hidden sm:block px-3 py-1.5 rounded-lg text-xs font-bold border ${
-                readChapters.includes(
-                  activeChapter.id
-                )
-                  ? "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30"
-                  : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white"
-              }`}
-            >
-              {readChapters.includes(
-                activeChapter.id
-              )
-                ? "✓ Leído"
-                : "Marcar leído"}
-            </button>
-
-            {/* CERRAR */}
-
-            <button
-              onClick={closeReader}
-              className="bg-neutral-800 hover:bg-neutral-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold"
-            >
-              <span className="hidden sm:inline">
-                Cerrar
-              </span>{" "}
-              ✕
-            </button>
           </div>
-        </header>
+        )}
 
-        {/* DRAWER */}
+        {/* ======================================================
+           DRAWER
+        ====================================================== */}
 
         {showChapterList && (
           <div className="absolute inset-0 z-40">
+
             <button
               onClick={() =>
                 setShowChapterList(
@@ -926,17 +1124,18 @@ export default function MangaDetail() {
             />
 
             <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-96 bg-neutral-950 border-l border-neutral-800 shadow-2xl flex flex-col">
+
               <div className="px-4 py-4 border-b border-neutral-800 shrink-0">
+
                 <div className="flex items-center justify-between gap-3 mb-3">
+
                   <div>
                     <h3 className="text-sm font-bold text-white">
                       Capítulos
                     </h3>
 
                     <p className="text-[11px] text-neutral-500 mt-0.5">
-                      {
-                        orderedChapters.length
-                      }{" "}
+                      {orderedChapters.length}{" "}
                       capítulos
                     </p>
                   </div>
@@ -947,10 +1146,34 @@ export default function MangaDetail() {
                         false
                       )
                     }
-                    className="w-8 h-8 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white flex items-center justify-center"
+                    className="w-8 h-8 rounded-lg bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-white flex items-center justify-center transition-colors"
+                    title="Cerrar capítulos"
                   >
-                    ✕
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    >
+                      <line
+                        x1="6"
+                        y1="6"
+                        x2="18"
+                        y2="18"
+                      />
+
+                      <line
+                        x1="18"
+                        y1="6"
+                        x2="6"
+                        y2="18"
+                      />
+                    </svg>
                   </button>
+
                 </div>
 
                 <input
@@ -966,10 +1189,13 @@ export default function MangaDetail() {
                   }
                   className="w-full bg-neutral-900 border border-neutral-800 px-3 py-2 rounded-xl text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:border-pink-500"
                 />
+
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3">
+              <div className="flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-3">
+
                 <div className="space-y-1.5">
+
                   {readerChapters.length ===
                   0 ? (
                     <p className="text-xs text-neutral-500 text-center py-8">
@@ -1007,6 +1233,7 @@ export default function MangaDetail() {
                             }`}
                           >
                             <div className="min-w-0">
+
                               <p
                                 className={`text-xs font-semibold truncate ${
                                   isActive
@@ -1024,9 +1251,11 @@ export default function MangaDetail() {
                                   Leyendo ahora
                                 </p>
                               )}
+
                             </div>
 
                             <div className="shrink-0">
+
                               {isActive ? (
                                 <span className="text-pink-400 text-xs font-bold">
                                   ●
@@ -1040,19 +1269,24 @@ export default function MangaDetail() {
                                   ○
                                 </span>
                               )}
+
                             </div>
                           </button>
                         );
                       }
                     )
                   )}
+
                 </div>
               </div>
+
             </aside>
           </div>
         )}
 
-        {/* CONTENIDO DEL LECTOR */}
+        {/* ======================================================
+           CONTENIDO DEL LECTOR
+        ====================================================== */}
 
         <div className="tomo-reader-scroll relative flex-1 min-h-0 bg-black overflow-y-auto overflow-x-hidden">
 
@@ -1066,6 +1300,7 @@ export default function MangaDetail() {
 
           {readerError && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 px-6 text-center bg-black">
+
               <p className="text-red-400 text-sm">
                 {readerError}
               </p>
@@ -1076,10 +1311,11 @@ export default function MangaDetail() {
                     activeChapter
                   );
                 }}
-                className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded-lg text-sm font-bold"
+                className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
               >
                 Reintentar
               </button>
+
             </div>
           )}
 
@@ -1090,6 +1326,7 @@ export default function MangaDetail() {
             !readerLoading &&
             !readerError && (
               <div className="w-full flex flex-col items-center">
+
                 {chapterImages.map(
                   (image, index) => (
                     <img
@@ -1106,6 +1343,7 @@ export default function MangaDetail() {
                     />
                   )
                 )}
+
               </div>
             )}
 
@@ -1117,7 +1355,9 @@ export default function MangaDetail() {
             !readerError &&
             chapterImages.length > 0 && (
               <div className="w-full h-full flex items-center justify-center bg-black">
+
                 <div className="w-full h-full flex items-center justify-center px-2 md:px-12 py-4">
+
                   <img
                     src={
                       chapterImages[
@@ -1130,107 +1370,88 @@ export default function MangaDetail() {
                     className="max-w-full max-h-full object-contain select-none"
                     draggable={false}
                   />
+
                 </div>
               </div>
             )}
+
         </div>
 
-        {/* FOOTER */}
+        {/* ======================================================
+           FOOTER DEL LECTOR
+        ====================================================== */}
 
-        <footer className="bg-neutral-900 border-t border-neutral-800 px-3 py-2.5 shrink-0">
-          <div className="flex items-center justify-between max-w-5xl mx-auto gap-3">
+        {!readerFullscreen && (
+          <footer className="bg-neutral-900 border-t border-neutral-800 px-3 py-2.5 shrink-0">
 
-            {/* ANTERIOR */}
+            <div className="flex items-center justify-between max-w-5xl mx-auto gap-3">
 
-            <button
-              disabled={
-                readerMode === "page"
-                  ? currentPage === 0
-                  : activeChapterIndex <= 0
-              }
-              onClick={() => {
-                if (
-                  readerMode === "page"
-                ) {
-                  previousPage();
-                  return;
+              {/* ANTERIOR */}
+
+              <button
+                disabled={
+                  readerMode ===
+                  "page"
+                    ? currentPage === 0
+                    : !hasPreviousChapter
                 }
+                onClick={() => {
+                  if (
+                    readerMode ===
+                    "page"
+                  ) {
+                    previousPage();
+                    return;
+                  }
 
-                if (
-                  activeChapterIndex <=
-                  0
-                ) {
-                  return;
+                  previousChapter();
+                }}
+                className="min-w-[105px] h-9 inline-flex items-center justify-center bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed text-white px-4 rounded-lg text-xs font-bold transition-colors"
+              >
+                Anterior
+              </button>
+
+              {/* INDICADOR */}
+
+              <span className="min-w-[70px] text-xs text-neutral-400 text-center tabular-nums">
+
+                {readerMode ===
+                "page"
+                  ? `${currentPage + 1} / ${chapterImages.length}`
+                  : `${activeChapterIndex + 1} / ${orderedChapters.length}`}
+
+              </span>
+
+              {/* SIGUIENTE */}
+
+              <button
+                disabled={
+                  readerMode ===
+                  "page"
+                    ? currentPage >=
+                      chapterImages.length - 1
+                    : !hasNextChapter
                 }
-
-                openBuiltInReader(
-                  orderedChapters[
-                    activeChapterIndex - 1
-                  ]
-                );
-              }}
-              className="min-w-[105px] h-9 inline-flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed text-white px-4 rounded-lg text-xs font-bold transition-colors"
-            >
-              <span>←</span>
-              <span>Anterior</span>
-            </button>
-
-            {/* INDICADOR */}
-
-            <span className="min-w-[70px] text-xs text-neutral-400 text-center tabular-nums">
-              {readerMode === "page"
-                ? `${currentPage + 1} / ${chapterImages.length}`
-                : `${activeChapterIndex + 1} / ${orderedChapters.length}`}
-            </span>
-
-            {/* SIGUIENTE */}
-
-            <button
-              disabled={
-                readerMode === "page"
-                  ? isLastPage &&
-                    !hasNextChapter
-                  : !hasNextChapter
-              }
-              onClick={() => {
-                if (
-                  readerMode === "page"
-                ) {
-                  if (!isLastPage) {
+                onClick={() => {
+                  if (
+                    readerMode ===
+                    "page"
+                  ) {
                     nextPage();
                     return;
                   }
 
-                  if (hasNextChapter) {
-                    nextChapter();
-                  }
+                  nextChapter();
+                }}
+                className="min-w-[105px] h-9 inline-flex items-center justify-center bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed text-white px-4 rounded-lg text-xs font-bold transition-colors"
+              >
+                Siguiente
+              </button>
 
-                  return;
-                }
+            </div>
+          </footer>
+        )}
 
-                nextChapter();
-              }}
-              className="min-w-[105px] h-9 inline-flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed text-white px-4 rounded-lg text-xs font-bold transition-colors"
-            >
-              <span>
-                {readerMode === "page" &&
-                isLastPage
-                  ? hasNextChapter
-                    ? "Siguiente capítulo"
-                    : "Fin del manga"
-                  : "Siguiente"}
-              </span>
-
-              {!(
-                readerMode === "page" &&
-                isLastPage &&
-                !hasNextChapter
-              ) && (
-                <span>→</span>
-              )}
-            </button>
-          </div>
-        </footer>
       </div>
     );
   }
@@ -1241,16 +1462,36 @@ export default function MangaDetail() {
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100 p-6 md:p-12 relative">
+
       <div className="max-w-4xl mx-auto space-y-8">
 
-        {/* HEADER */}
+        {/* ======================================================
+           HEADER
+        ====================================================== */}
 
         <div className="flex justify-between items-center">
+
           <Link
             href="/"
-            className="text-sm text-pink-400 hover:underline"
+            className="inline-flex items-center gap-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-pink-500/40 text-neutral-300 hover:text-pink-400 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 group"
           >
-            ← Volver a la Biblioteca
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="transition-transform duration-200 group-hover:-translate-x-0.5"
+            >
+              <path d="M19 12H5" />
+
+              <path d="M12 19l-7-7 7-7" />
+            </svg>
+
+            Volver a la biblioteca
           </Link>
 
           <span className="text-3xl sm:text-4xl font-black tracking-[-0.09em] leading-none text-white">
@@ -1259,12 +1500,15 @@ export default function MangaDetail() {
               O
             </span>
           </span>
+
         </div>
 
         {mangaData && (
           <div className="space-y-8">
 
-            {/* INFORMACIÓN */}
+            {/* ==================================================
+               INFORMACIÓN
+            ================================================== */}
 
             <div className="flex flex-col md:flex-row gap-6 bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 backdrop-blur">
 
@@ -1315,6 +1559,7 @@ export default function MangaDetail() {
                 <div className="pt-2">
 
                   <div className="flex justify-between text-[11px] text-neutral-500 mb-1">
+
                     <span>
                       Progreso
                     </span>
@@ -1322,23 +1567,27 @@ export default function MangaDetail() {
                     <span>
                       {progress}%
                     </span>
+
                   </div>
 
                   <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+
                     <div
                       className="h-full bg-pink-500 transition-all"
                       style={{
                         width: `${progress}%`,
                       }}
                     />
-                  </div>
 
+                  </div>
                 </div>
 
               </div>
             </div>
 
-            {/* CAPÍTULOS */}
+            {/* ==================================================
+               CAPÍTULOS
+            ================================================== */}
 
             <div className="space-y-4">
 
@@ -1364,10 +1613,27 @@ export default function MangaDetail() {
                     className="bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500 w-full sm:w-48"
                   />
 
+                  <button
+                    onClick={() =>
+                      setSortOrder(
+                        sortOrder ===
+                          "asc"
+                          ? "desc"
+                          : "asc"
+                      )
+                    }
+                    className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 px-3 py-1.5 rounded-xl text-xs font-medium text-neutral-300 transition-colors cursor-pointer shrink-0"
+                  >
+                    {sortOrder ===
+                    "asc"
+                      ? "Asc 📈"
+                      : "Desc 📉"}
+                  </button>
+
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden pr-2">
 
                 {filteredChapters.length ===
                 0 ? (
@@ -1378,9 +1644,17 @@ export default function MangaDetail() {
                 ) : (
                   filteredChapters.map(
                     (chapter) => {
+
                       const isRead =
                         readChapters.includes(
                           chapter.id
+                        );
+
+                      const isCurrent =
+                        chapter.id ===
+                        (
+                          activeChapter?.id ??
+                          lastChapterId
                         );
 
                       return (
@@ -1389,11 +1663,14 @@ export default function MangaDetail() {
                             chapter.id
                           }
                           className={`flex justify-between items-center bg-neutral-900 border p-4 rounded-xl transition-all group ${
-                            isRead
+                            isCurrent
+                              ? "border-pink-500/40 bg-pink-500/[0.05]"
+                              : isRead
                               ? "border-green-500/20"
                               : "border-neutral-800 hover:border-pink-500/50"
                           }`}
                         >
+
                           <button
                             onClick={() =>
                               openBuiltInReader(
@@ -1402,18 +1679,38 @@ export default function MangaDetail() {
                             }
                             className="font-medium text-sm text-neutral-200 group-hover:text-pink-400 transition-colors flex-1 truncate mr-2 text-left cursor-pointer"
                           >
+
                             {isRead && (
                               <span className="text-green-400 mr-2">
                                 ✓
                               </span>
                             )}
 
+                            {isCurrent &&
+                              !isRead && (
+                                <span className="text-pink-400 mr-2">
+                                  ●
+                                </span>
+                            )}
+
                             {
                               chapter.title
                             }
+
                           </button>
 
                           <div className="flex items-center gap-2 shrink-0">
+
+                            <button
+                              onClick={() =>
+                                openBuiltInReader(
+                                  chapter
+                                )
+                              }
+                              className="text-xs text-neutral-300 bg-neutral-950 px-3 py-1.5 rounded-md border border-neutral-800 group-hover:border-pink-500/50 hover:text-pink-400 shrink-0 transition-colors"
+                            >
+                              Leer
+                            </button>
 
                             <button
                               onClick={() =>
@@ -1449,6 +1746,7 @@ export default function MangaDetail() {
 
           </div>
         )}
+
       </div>
     </main>
   );
