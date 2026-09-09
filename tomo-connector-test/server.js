@@ -18,8 +18,6 @@ const HEADERS = {
     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 
   "Accept-Language": "en-US,en;q=0.9",
-
-  Referer: "https://weebcentral.com/",
 };
 
 // ==========================================
