@@ -1460,22 +1460,36 @@ export default function MangaDetail() {
                   Capítulos
                 </h3>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative w-full sm:w-60">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none"
+                  >
+                    <circle
+                      cx="11"
+                      cy="11"
+                      r="7"
+                    />
+
+                    <path
+                      strokeLinecap="round"
+                      d="m20 20-4-4"
+                    />
+                  </svg>
 
                   <input
                     type="text"
                     placeholder="Buscar capítulo..."
-                    value={
-                      searchFilter
-                    }
+                    value={searchFilter}
                     onChange={(e) =>
-                      setSearchFilter(
-                        e.target.value
-                      )
+                      setSearchFilter(e.target.value)
                     }
-                    className="bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500 w-full sm:w-48"
+                    className="w-full bg-neutral-900 border border-neutral-800 focus:border-pink-500/50 outline-none rounded-xl pl-10 pr-3 py-3 text-xs text-white placeholder:text-neutral-500 transition-colors"
                   />
-
                 </div>
               </div>
 

@@ -33,9 +33,6 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const [search, setSearch] = useState('');
-  const [sortOrder, setSortOrder] = useState<
-    'recent' | 'name' | 'progress'
-  >('recent');
 
   const [progressData, setProgressData] = useState<
     Record<string, MangaProgress>
@@ -71,10 +68,13 @@ export default function Home() {
 
     /*
      * PRIMERO:
-     * Leer únicamente los datos locales.
+     * Cargar todo lo posible desde localStorage.
      *
-     * Esto ocurre inmediatamente y no depende
-     * de WeebCentral.
+     * Esto permite mostrar inmediatamente:
+     * - capítulos leídos
+     * - progreso guardado
+     * - capítulo actual
+     * - orden de mangas empezados
      */
     const localProgress: Record<string, MangaProgress> = {};
 
@@ -92,6 +92,10 @@ export default function Home() {
           `tomo_last_chapter_${manga.id}`
         );
 
+        const savedTotalChapters = localStorage.getItem(
+          `tomo_total_chapters_${manga.id}`
+        );
+
         const readChapters: string[] = savedRead
           ? JSON.parse(savedRead)
           : [];
@@ -99,27 +103,27 @@ export default function Home() {
         const savedPageData: Record<string, number> =
           savedPages ? JSON.parse(savedPages) : {};
 
-        let lastChapterId =
-          savedLastChapter || null;
+        const totalChapters = savedTotalChapters
+          ? Number(savedTotalChapters)
+          : -1;
+
+        let lastChapterId = savedLastChapter || null;
 
         let lastPage: number | null = null;
 
         /*
-         * Si tenemos un capítulo guardado,
-         * recuperamos inmediatamente su página.
+         * Último capítulo abierto.
          */
         if (
           lastChapterId &&
           savedPageData[lastChapterId] !== undefined
         ) {
-          lastPage =
-            savedPageData[lastChapterId];
+          lastPage = savedPageData[lastChapterId];
         }
 
         /*
          * Respaldo:
-         * si no existe último capítulo, buscamos
-         * cualquier capítulo con una página guardada.
+         * capítulo con página guardada.
          */
         if (!lastChapterId) {
           const savedChapterIds =
@@ -131,24 +135,38 @@ export default function Home() {
                 savedChapterIds.length - 1
               ];
 
-            lastPage =
-              savedPageData[lastChapterId];
+            lastPage = savedPageData[lastChapterId];
           }
         }
 
         /*
-         * Solo guardamos lo que realmente sabemos.
-         *
-         * totalChapters = -1 significa:
-         * "todavía no sabemos cuántos capítulos hay".
-         *
-         * Así evitamos mostrar falsamente:
-         * "0 de 8 capítulos".
+         * Respaldo:
+         * último capítulo marcado como leído.
          */
+        if (
+          !lastChapterId &&
+          readChapters.length > 0
+        ) {
+          lastChapterId =
+            readChapters[readChapters.length - 1];
+        }
+
+        const progress =
+          totalChapters > 0
+            ? Math.min(
+                100,
+                Math.round(
+                  (readChapters.length /
+                    totalChapters) *
+                    100
+                )
+              )
+            : 0;
+
         localProgress[manga.id] = {
           readCount: readChapters.length,
-          totalChapters: -1,
-          progress: 0,
+          totalChapters,
+          progress,
           lastChapterId,
           lastChapterTitle: null,
           lastPage,
@@ -168,7 +186,8 @@ export default function Home() {
 
     /*
      * SEGUNDO:
-     * Obtener la información completa del API.
+     * Actualizar información desde el API
+     * en segundo plano.
      */
     const loadProgress = async () => {
       const results = await Promise.all(
@@ -219,6 +238,15 @@ export default function Home() {
 
             const totalChapters =
               chapters.length;
+
+            /*
+             * Guardamos el total de capítulos
+             * para la próxima carga.
+             */
+            localStorage.setItem(
+              `tomo_total_chapters_${manga.id}`,
+              String(totalChapters)
+            );
 
             const readCount =
               readChapters.length;
@@ -321,7 +349,13 @@ export default function Home() {
                 lastChapterId:
                   lastChapter?.id ||
                   savedLastChapter ||
-                  null,
+                  (
+                    readChapters.length > 0
+                      ? readChapters[
+                          readChapters.length - 1
+                        ]
+                      : null
+                  ),
                 lastChapterTitle:
                   lastChapter?.title ||
                   null,
@@ -335,9 +369,8 @@ export default function Home() {
             );
 
             /*
-             * Si el API falla, conservamos
-             * absolutamente todo lo que ya
-             * teníamos de localStorage.
+             * Si el API falla,
+             * conservamos los datos locales.
              */
             return [
               manga.id,
@@ -481,83 +514,38 @@ export default function Home() {
   };
 
   /* =========================
-     CONTINUAR LEYENDO
-  ========================= */
-
-  const continueReading = useMemo(() => {
-    return library
-      .filter((manga) => {
-        const data =
-          progressData[manga.id];
-
-        return (
-          data &&
-          data.lastChapterId &&
-          (
-            data.totalChapters === -1 ||
-            (
-              data.totalChapters > 0 &&
-              data.progress < 100
-            )
-          )
-        );
-      })
-      .sort((a, b) => {
-        const aData =
-          progressData[a.id];
-
-        const bData =
-          progressData[b.id];
-
-        return (
-          (bData?.progress || 0) -
-          (aData?.progress || 0)
-        );
-      });
-  }, [
-    library,
-    progressData,
-  ]);
-
-  /* =========================
      FILTRAR / ORDENAR
   ========================= */
 
   const filteredLibrary = useMemo(() => {
-    let result = library.filter(
-      (manga) =>
-        manga.title
-          .toLowerCase()
-          .includes(
-            search.toLowerCase()
-          )
+    const result = library.filter((manga) =>
+      manga.title
+        .toLowerCase()
+        .includes(search.toLowerCase())
     );
 
-    if (sortOrder === 'name') {
-      result.sort((a, b) =>
-        a.title.localeCompare(b.title)
-      );
-    }
+    /*
+     * Los mangas con al menos un capítulo
+     * leído siempre aparecen primero.
+     */
+    result.sort((a, b) => {
+      const aStarted =
+        (progressData[a.id]?.readCount || 0) > 0;
 
-    if (sortOrder === 'progress') {
-      result.sort(
-        (a, b) =>
-          (
-            progressData[b.id]
-              ?.progress || 0
-          ) -
-          (
-            progressData[a.id]
-              ?.progress || 0
-          )
-      );
-    }
+      const bStarted =
+        (progressData[b.id]?.readCount || 0) > 0;
+
+      if (aStarted !== bStarted) {
+        return aStarted ? -1 : 1;
+      }
+
+      return 0;
+    });
 
     return result;
   }, [
     library,
     search,
-    sortOrder,
     progressData,
   ]);
 
@@ -611,157 +599,9 @@ export default function Home() {
           </button>
         </header>
 
-        {/* CONTINUAR LEYENDO */}
-
-        {continueReading.length > 0 && (
-          <section className="mt-8 sm:mt-10 md:mt-12">
-            <div className="mb-4 sm:mb-5">
-              <p className="text-[10px] uppercase tracking-[0.28em] text-pink-500 font-bold mb-1.5">
-                Tu lectura
-              </p>
-
-              <h2 className="text-2xl sm:text-3xl font-black text-white">
-                Continuar leyendo
-              </h2>
-            </div>
-
-            {(() => {
-              const manga =
-                continueReading[0];
-
-              const data =
-                progressData[manga.id];
-
-              if (
-                !data ||
-                !data.lastChapterId
-              ) {
-                return null;
-              }
-
-              return (
-                <Link
-                  href={`/manga/${manga.id}?chapter=${encodeURIComponent(
-                    data.lastChapterId
-                  )}`}
-                  className="group relative block overflow-hidden rounded-2xl sm:rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl hover:border-pink-500/40 transition-all duration-300"
-                >
-                  {manga.cover && (
-                    <img
-                      src={manga.cover}
-                      alt=""
-                      className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-15 sm:opacity-20 group-hover:opacity-25 transition-opacity duration-500"
-                    />
-                  )}
-
-                  <div className="absolute inset-0 bg-gradient-to-r from-neutral-950 via-neutral-950/95 to-neutral-950/70 sm:to-neutral-950/65" />
-
-                  <div className="relative z-10 flex flex-col sm:flex-row min-h-0 sm:min-h-[300px] md:min-h-[350px]">
-
-                    {/* PORTADA */}
-
-                    <div className="w-full sm:w-40 md:w-56 shrink-0 p-4 sm:p-5 md:p-6">
-                      <div className="w-32 sm:w-full mx-auto aspect-[3/4] sm:aspect-auto sm:h-full rounded-xl sm:rounded-2xl overflow-hidden bg-neutral-950 border border-white/10 shadow-2xl">
-                        {manga.cover ? (
-                          <img
-                            src={manga.cover}
-                            alt={manga.title}
-                            className="w-full h-full object-cover group-hover:scale-[1.035] transition-transform duration-500"
-                          />
-                        ) : (
-                          <div className="w-full h-full min-h-40 flex items-center justify-center text-xs text-neutral-500">
-                            Sin portada
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* INFORMACIÓN */}
-
-                    <div className="flex-1 flex flex-col justify-center px-4 pb-5 sm:px-0 sm:py-8 sm:pr-6 md:pr-12 min-w-0 text-center sm:text-left">
-                      <p className="text-[10px] uppercase tracking-[0.25em] text-neutral-500 font-bold mb-2">
-                        Continúa con
-                      </p>
-
-                      <h3 className="text-2xl sm:text-2xl md:text-4xl font-black leading-tight text-white max-w-2xl line-clamp-2">
-                        {manga.title}
-                      </h3>
-
-                      <div className="mt-3 sm:mt-4">
-                        <p className="text-sm md:text-base font-semibold text-neutral-300 line-clamp-1">
-                          {data.lastChapterTitle ||
-                            'Continuar con tu lectura...'}
-                        </p>
-
-                        {data.lastPage !== null && (
-                          <p className="text-xs text-neutral-500 mt-1">
-                            Página {data.lastPage + 1}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="w-full max-w-xl mx-auto sm:mx-0 mt-5 sm:mt-6">
-                        <div className="flex items-center justify-between text-xs mb-2">
-                          <span className="text-neutral-400">
-                            {data.totalChapters > 0
-                              ? `${data.readCount} de ${data.totalChapters} capítulos`
-                              : 'Cargando progreso...'}
-                          </span>
-
-                          {data.totalChapters > 0 && (
-                            <span className="text-pink-400 font-bold">
-                              {data.progress}%
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-pink-500 rounded-full"
-                            style={{
-                              width: `${data.progress}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="mt-5 sm:mt-7">
-                        <span className="inline-flex items-center justify-center gap-2 w-full sm:w-auto bg-pink-500 group-hover:bg-pink-600 text-white text-xs font-black px-5 py-3 rounded-xl transition-colors">
-                          Continuar leyendo
-
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            className="w-4 h-4 group-hover:translate-x-0.5 transition-transform"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M5 12h14m-6-6 6 6-6 6"
-                            />
-                          </svg>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })()}
-          </section>
-        )}
-
         {/* BIBLIOTECA */}
 
-        <section
-          className={
-            continueReading.length > 0
-              ? 'mt-12 sm:mt-14 md:mt-16'
-              : 'mt-8 sm:mt-10 md:mt-12'
-          }
-        >
+        <section className="mt-8 sm:mt-10 md:mt-12">
           <div className="mb-6 sm:mb-7">
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
               <div>
@@ -786,8 +626,7 @@ export default function Home() {
               </div>
 
               {library.length > 0 && (
-                <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-
+                <div className="flex w-full lg:w-auto">
                   {/* BUSCAR */}
 
                   <div className="relative flex-1 sm:flex-none">
@@ -820,65 +659,6 @@ export default function Home() {
                       }
                       className="w-full sm:w-60 bg-neutral-900 border border-neutral-800 focus:border-pink-500/50 outline-none rounded-xl pl-10 pr-3 py-3 text-xs text-white placeholder:text-neutral-500 transition-colors"
                     />
-                  </div>
-
-                  {/* ORDENAR */}
-
-                  <div className="relative sm:w-44">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M8 6h12M8 12h8M8 18h4M4 6h.01M4 12h.01M4 18h.01"
-                      />
-                    </svg>
-
-                    <select
-                      value={sortOrder}
-                      onChange={(e) =>
-                        setSortOrder(
-                          e.target.value as
-                            | 'recent'
-                            | 'name'
-                            | 'progress'
-                        )
-                      }
-                      className="appearance-none w-full bg-neutral-900 border border-neutral-800 focus:border-pink-500/50 outline-none rounded-xl pl-10 pr-9 py-3 text-xs text-neutral-400 cursor-pointer"
-                    >
-                      <option value="recent">
-                        Más recientes
-                      </option>
-
-                      <option value="name">
-                        Nombre
-                      </option>
-
-                      <option value="progress">
-                        Progreso
-                      </option>
-                    </select>
-
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-500 pointer-events-none"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="m6 9 6 6 6-6"
-                      />
-                    </svg>
                   </div>
                 </div>
               )}
@@ -999,7 +779,7 @@ export default function Home() {
 
                   const isStarted =
                     data &&
-                    data.progress > 0;
+                    data.readCount > 0;
 
                   return (
                     <Link
@@ -1320,4 +1100,3 @@ export default function Home() {
     </main>
   );
 }
-
