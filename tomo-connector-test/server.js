@@ -93,7 +93,7 @@ function fetchHtml(url) {
 
 function getSeriesId(seriesUrl) {
   const match = seriesUrl.match(
-    /\/series\/([A-Z0-9]{26})/
+    /\/series\/([A-Z0-9]{26})/i
   );
 
   return match ? match[1] : "";
@@ -105,10 +105,183 @@ function getSeriesId(seriesUrl) {
 
 function getChapterId(chapterUrl) {
   const match = chapterUrl.match(
-    /\/chapters\/([A-Z0-9]{26})/
+    /\/chapters\/([A-Z0-9]{26})/i
   );
 
   return match ? match[1] : "";
+}
+
+// ==========================================
+// LIMPIAR TEXTO
+// ==========================================
+
+function cleanText(value) {
+  return value
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ==========================================
+// OBTENER SINOPSIS
+// ==========================================
+
+function parseSynopsis($) {
+  let synopsis = "";
+
+  // ========================================
+  // MÉTODO 1
+  // Buscar literalmente "Description"
+  // ========================================
+
+  $("body *").each((index, element) => {
+    if (synopsis) {
+      return;
+    }
+
+    const text = cleanText(
+      $(element)
+        .clone()
+        .children()
+        .remove()
+        .end()
+        .text()
+    );
+
+    if (text !== "Description") {
+      return;
+    }
+
+    // Buscar el siguiente elemento con contenido
+    let next = $(element).next();
+
+    while (next.length) {
+      const nextText = cleanText(
+        next.text()
+      );
+
+      if (
+        nextText &&
+        nextText !== "Description"
+      ) {
+        synopsis = nextText;
+        break;
+      }
+
+      next = next.next();
+    }
+  });
+
+  // ========================================
+  // MÉTODO 2
+  // Si Description está dentro de un contenedor,
+  // buscar el siguiente hermano del contenedor
+  // ========================================
+
+  if (!synopsis) {
+    $("body *").each((index, element) => {
+      if (synopsis) {
+        return;
+      }
+
+      const directText = cleanText(
+        $(element)
+          .clone()
+          .children()
+          .remove()
+          .end()
+          .text()
+      );
+
+      if (directText !== "Description") {
+        return;
+      }
+
+      const parent = $(element).parent();
+
+      if (!parent.length) {
+        return;
+      }
+
+      let next = parent.next();
+
+      while (next.length) {
+        const nextText = cleanText(
+          next.text()
+        );
+
+        if (
+          nextText &&
+          nextText !== "Description"
+        ) {
+          synopsis = nextText;
+          break;
+        }
+
+        next = next.next();
+      }
+    });
+  }
+
+  // ========================================
+  // MÉTODO 3
+  // Buscar clases conocidas
+  // ========================================
+
+  if (!synopsis) {
+    const selectors = [
+      '[class*="synopsis"]',
+      '[class*="description"]',
+      '[class*="summary"]',
+      '[id*="synopsis"]',
+      '[id*="description"]',
+      '[id*="summary"]',
+    ];
+
+    for (const selector of selectors) {
+      const value = cleanText(
+        $(selector)
+          .first()
+          .text()
+      );
+
+      if (
+        value &&
+        value.toLowerCase() !==
+          "description"
+      ) {
+        synopsis = value;
+        break;
+      }
+    }
+  }
+
+  // ========================================
+  // MÉTODO 4
+  // Buscar párrafos con contenido
+  // ========================================
+
+  if (!synopsis) {
+    $("p").each((index, element) => {
+      if (synopsis) {
+        return;
+      }
+
+      const value = cleanText(
+        $(element).text()
+      );
+
+      if (
+        value.length > 40 &&
+        !value.includes("Copyright") &&
+        !value.includes("Login") &&
+        !value.includes("Register")
+      ) {
+        synopsis = value;
+      }
+    });
+  }
+
+  return synopsis;
 }
 
 // ==========================================
@@ -117,6 +290,10 @@ function getChapterId(chapterUrl) {
 
 function parseSeries(html, seriesUrl) {
   const $ = cheerio.load(html);
+
+  // ========================================
+  // TÍTULO
+  // ========================================
 
   let title = "";
 
@@ -127,10 +304,11 @@ function parseSeries(html, seriesUrl) {
   ];
 
   for (const selector of titleSelectors) {
-    const value = $(selector)
-      .first()
-      .text()
-      .trim();
+    const value = cleanText(
+      $(selector)
+        .first()
+        .text()
+    );
 
     if (value) {
       title = value;
@@ -138,33 +316,29 @@ function parseSeries(html, seriesUrl) {
     }
   }
 
-  let synopsis = "";
+  // ========================================
+  // SINOPSIS
+  // ========================================
 
-  const synopsisSelectors = [
-    '[class*="synopsis"]',
-    '[class*="description"]',
-    '[class*="summary"]',
-  ];
+  const synopsis =
+    parseSynopsis($);
 
-  for (const selector of synopsisSelectors) {
-    const value = $(selector)
-      .first()
-      .text()
-      .trim();
+  // ========================================
+  // SERIES ID
+  // ========================================
 
-    if (value) {
-      synopsis = value;
-      break;
-    }
-  }
+  const seriesId =
+    getSeriesId(seriesUrl);
 
-  const seriesId = getSeriesId(seriesUrl);
+  // ========================================
+  // PORTADA
+  // ========================================
 
   let cover = "";
 
   if (seriesId) {
     cover =
-      `https://temp.compsci88.com/cover/normal/${seriesId}.webp`;
+      `${"https://temp.compsci88.com"}/cover/normal/${seriesId}.webp`;
   }
 
   return {
@@ -175,9 +349,16 @@ function parseSeries(html, seriesUrl) {
     synopsis,
     source: "weebcentral",
     url: seriesUrl,
-    pageBytes: Buffer.byteLength(html, "utf8"),
+    pageBytes:
+      Buffer.byteLength(
+        html,
+        "utf8"
+      ),
     hasPageContent:
-      $("body").text().trim().length > 0,
+      $("body")
+        .text()
+        .trim()
+        .length > 0,
   };
 }
 
@@ -192,19 +373,23 @@ function parseChapters(html) {
 
   $('a[href*="/chapters/"]').each(
     (index, element) => {
-      const href = $(element).attr("href");
+      const href =
+        $(element).attr("href");
 
       if (!href) {
         return;
       }
 
-      const chapterUrl = new URL(
-        href,
-        WEBCENTRAL_BASE
-      ).toString();
+      const chapterUrl =
+        new URL(
+          href,
+          WEBCENTRAL_BASE
+        ).toString();
 
       const chapterId =
-        getChapterId(chapterUrl);
+        getChapterId(
+          chapterUrl
+        );
 
       if (!chapterId) {
         return;
@@ -214,28 +399,29 @@ function parseChapters(html) {
       // OBTENER TÍTULO LIMPIO
       // ======================================
 
-      const rawText = $(element)
-        .text()
-        .replace(/\s+/g, " ")
-        .trim();
-
-      const chapterMatch = rawText.match(
-        /^(Chapter\s+\d+(?:\.\d+)?)/i
+      const rawText = cleanText(
+        $(element).text()
       );
+
+      const chapterMatch =
+        rawText.match(
+          /^(Chapter\s+\d+(?:\.\d+)?)/i
+        );
 
       let title = "";
 
       if (chapterMatch) {
-        title = chapterMatch[1].trim();
+        title =
+          chapterMatch[1].trim();
       } else {
-        const clone = $(element).clone();
+        const clone =
+          $(element).clone();
 
         clone.children().remove();
 
-        title = clone
-          .text()
-          .replace(/\s+/g, " ")
-          .trim();
+        title = cleanText(
+          clone.text()
+        );
       }
 
       if (!title) {
@@ -258,12 +444,16 @@ function parseChapters(html) {
   const seen = new Set();
 
   for (const chapter of chapters) {
-    if (seen.has(chapter.id)) {
+    if (
+      seen.has(chapter.id)
+    ) {
       continue;
     }
 
     seen.add(chapter.id);
-    uniqueChapters.push(chapter);
+    uniqueChapters.push(
+      chapter
+    );
   }
 
   return uniqueChapters;
@@ -273,38 +463,66 @@ function parseChapters(html) {
 // PARSEAR IMÁGENES DEL CAPÍTULO
 // ==========================================
 
-function parseChapterImages(html, chapterUrl) {
-  const $ = cheerio.load(html);
+function parseChapterImages(
+  html,
+  chapterUrl
+) {
+  const $ =
+    cheerio.load(html);
 
   const images = [];
 
-  $("img").each((index, element) => {
-    const src =
-      $(element).attr("src") ||
-      $(element).attr("data-src") ||
-      $(element).attr("data-lazy-src");
+  $("img").each(
+    (index, element) => {
+      const src =
+        $(element).attr("src") ||
+        $(element).attr(
+          "data-src"
+        ) ||
+        $(element).attr(
+          "data-lazy-src"
+        );
 
-    if (!src) {
-      return;
+      if (!src) {
+        return;
+      }
+
+      const absoluteUrl =
+        new URL(
+          src,
+          chapterUrl
+        ).toString();
+
+      // Ignorar imágenes internas
+      // de WeebCentral
+      if (
+        absoluteUrl.includes(
+          "/static/"
+        )
+      ) {
+        return;
+      }
+
+      if (
+        absoluteUrl.includes(
+          "brand"
+        )
+      ) {
+        return;
+      }
+
+      // Evitar duplicados
+      if (
+        !images.includes(
+          absoluteUrl
+        )
+      ) {
+        images.push(
+          absoluteUrl
+        );
+      }
     }
-
-    const absoluteUrl =
-      new URL(src, chapterUrl).toString();
-
-    // Ignorar imágenes internas de WeebCentral
-    if (absoluteUrl.includes("/static/")) {
-      return;
-    }
-
-    if (absoluteUrl.includes("brand")) {
-      return;
-    }
-
-    // Evitar duplicados
-    if (!images.includes(absoluteUrl)) {
-      images.push(absoluteUrl);
-    }
-  });
+  );
 
   return images;
 }
@@ -313,378 +531,491 @@ function parseChapterImages(html, chapterUrl) {
 // SERVIDOR
 // ==========================================
 
-const server = http.createServer(
-  async (req, res) => {
-    const requestUrl = new URL(
-      req.url || "/",
-      `http://${req.headers.host || `${HOST}:${PORT}`}`
-    );
-
-    console.log(
-      `${req.method} ${requestUrl.pathname}`
-    );
-
-    // ========================================
-    // CORS
-    // ========================================
-
-    res.setHeader(
-      "Access-Control-Allow-Origin",
-      "*"
-    );
-
-    res.setHeader(
-      "Access-Control-Allow-Methods",
-      "GET, OPTIONS"
-    );
-
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type"
-    );
-
-    // ========================================
-    // OPTIONS
-    // ========================================
-
-    if (req.method === "OPTIONS") {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    // ========================================
-    // GET /
-    // ========================================
-
-    if (
-      req.method === "GET" &&
-      requestUrl.pathname === "/"
-    ) {
-      sendJson(res, 200, {
-        success: true,
-        name: "TOMO Connector",
-        version: "0.4.0",
-        status: "online",
-      });
-
-      return;
-    }
-
-    // ========================================
-    // GET /manga
-    // ========================================
-
-    if (
-      req.method === "GET" &&
-      requestUrl.pathname === "/manga"
-    ) {
-      const seriesUrl =
-        requestUrl.searchParams.get("url");
-
-      if (!seriesUrl) {
-        sendJson(res, 400, {
-          success: false,
-          error: "Falta el parámetro ?url=",
-        });
-
-        return;
-      }
-
-      let parsedUrl;
-
-      try {
-        parsedUrl = new URL(seriesUrl);
-      } catch {
-        sendJson(res, 400, {
-          success: false,
-          error:
-            "La URL proporcionada no es válida",
-        });
-
-        return;
-      }
-
-      // Solo permitimos WeebCentral
-      if (
-        parsedUrl.hostname !==
-          "weebcentral.com" &&
-        parsedUrl.hostname !==
-          "www.weebcentral.com"
-      ) {
-        sendJson(res, 400, {
-          success: false,
-          error:
-            "La URL debe pertenecer a WeebCentral",
-        });
-
-        return;
-      }
-
-      try {
-        console.log("");
-        console.log("Obteniendo serie:");
-        console.log(seriesUrl);
-        console.log("");
-
-        const html =
-          await fetchHtml(seriesUrl);
-
-        console.log(
-          `HTML recibido: ${Buffer.byteLength(
-            html,
-            "utf8"
-          )} bytes`
+const server =
+  http.createServer(
+    async (req, res) => {
+      const requestUrl =
+        new URL(
+          req.url || "/",
+          `http://${req.headers.host || `${HOST}:${PORT}`}`
         );
 
-        const manga = parseSeries(
-          html,
-          seriesUrl
-        );
+      console.log(
+        `${req.method} ${requestUrl.pathname}`
+      );
 
-        console.log(
-          "Título:",
-          manga.title
-        );
+      // ========================================
+      // CORS
+      // ========================================
 
-        console.log(
-          "Series ID:",
-          manga.seriesId
-        );
+      res.setHeader(
+        "Access-Control-Allow-Origin",
+        "*"
+      );
 
-        console.log("");
+      res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET, OPTIONS"
+      );
 
-        sendJson(res, 200, manga);
-      } catch (error) {
-        console.error("");
-        console.error(
-          "ERROR WEBCENTRAL:"
-        );
-        console.error(error);
-        console.error("");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type"
+      );
 
-        sendJson(res, 502, {
-          success: false,
-          error:
-            "No se pudo obtener la información de WeebCentral",
-          details: error.message,
-        });
-      }
-
-      return;
-    }
-
-    // ========================================
-    // GET /chapters
-    // ========================================
-
-    if (
-      req.method === "GET" &&
-      requestUrl.pathname === "/chapters"
-    ) {
-      const seriesId =
-        requestUrl.searchParams.get(
-          "seriesId"
-        );
-
-      if (!seriesId) {
-        sendJson(res, 400, {
-          success: false,
-          error:
-            "Falta el parámetro ?seriesId=",
-        });
-
-        return;
-      }
+      // ========================================
+      // OPTIONS
+      // ========================================
 
       if (
-        !/^[A-Z0-9]{26}$/.test(seriesId)
+        req.method ===
+        "OPTIONS"
       ) {
-        sendJson(res, 400, {
-          success: false,
-          error:
-            "El seriesId no es válido",
-        });
-
+        res.writeHead(204);
+        res.end();
         return;
       }
 
-      const chaptersUrl =
-        `${WEBCENTRAL_BASE}/series/${seriesId}/full-chapter-list`;
-
-      try {
-        console.log("");
-        console.log(
-          "Obteniendo capítulos:"
-        );
-        console.log(chaptersUrl);
-        console.log("");
-
-        const html =
-          await fetchHtml(chaptersUrl);
-
-        console.log(
-          `HTML recibido: ${Buffer.byteLength(
-            html,
-            "utf8"
-          )} bytes`
-        );
-
-        const chapters =
-          parseChapters(html);
-
-        console.log(
-          "Capítulos encontrados:",
-          chapters.length
-        );
-
-        console.log("");
-
-        sendJson(res, 200, {
-          success: true,
-          seriesId,
-          totalChapters: chapters.length,
-          chapters,
-        });
-      } catch (error) {
-        console.error("");
-        console.error(
-          "ERROR OBTENIENDO CAPÍTULOS:"
-        );
-        console.error(error);
-        console.error("");
-
-        sendJson(res, 502, {
-          success: false,
-          error:
-            "No se pudieron obtener los capítulos",
-          details: error.message,
-        });
-      }
-
-      return;
-    }
-
-    // ========================================
-    // GET /chapter
-    // ========================================
-
-    if (
-      req.method === "GET" &&
-      requestUrl.pathname === "/chapter"
-    ) {
-      const chapterId =
-        requestUrl.searchParams.get(
-          "chapterId"
-        );
-
-      if (!chapterId) {
-        sendJson(res, 400, {
-          success: false,
-          error:
-            "Falta el parámetro ?chapterId=",
-        });
-
-        return;
-      }
+      // ========================================
+      // GET /
+      // ========================================
 
       if (
-        !/^[A-Z0-9]{26}$/.test(chapterId)
+        req.method === "GET" &&
+        requestUrl.pathname === "/"
       ) {
-        sendJson(res, 400, {
-          success: false,
-          error:
-            "El chapterId no es válido",
-        });
+        sendJson(
+          res,
+          200,
+          {
+            success: true,
+            name: "TOMO Connector",
+            version: "0.4.0",
+            status: "online",
+          }
+        );
 
         return;
       }
 
-      const chapterUrl =
-        `${WEBCENTRAL_BASE}/chapters/${chapterId}/images` +
-        `?is_prev=False&current_page=1&reading_style=long_strip`;
+      // ========================================
+      // GET /manga
+      // ========================================
 
-      try {
-        console.log("");
-        console.log(
-          "=========================================="
-        );
-        console.log(
-          "OBTENIENDO IMÁGENES DEL CAPÍTULO"
-        );
-        console.log(
-          "=========================================="
-        );
-        console.log(
-          "Chapter ID:",
-          chapterId
-        );
-        console.log(
-          "URL:",
-          chapterUrl
-        );
-        console.log("");
-
-        const html =
-          await fetchHtml(chapterUrl);
-
-        console.log(
-          `HTML recibido: ${Buffer.byteLength(
-            html,
-            "utf8"
-          )} bytes`
-        );
-
-        const images =
-          parseChapterImages(
-            html,
-            chapterUrl
+      if (
+        req.method === "GET" &&
+        requestUrl.pathname ===
+          "/manga"
+      ) {
+        const seriesUrl =
+          requestUrl.searchParams.get(
+            "url"
           );
 
-        console.log(
-          "Imágenes encontradas:",
-          images.length
-        );
+        if (!seriesUrl) {
+          sendJson(
+            res,
+            400,
+            {
+              success: false,
+              error:
+                "Falta el parámetro ?url=",
+            }
+          );
 
-        console.log("");
+          return;
+        }
 
-        sendJson(res, 200, {
-          success: true,
-          chapterId,
-          chapterUrl,
-          totalImages: images.length,
-          images,
-        });
-      } catch (error) {
-        console.error("");
-        console.error(
-          "ERROR OBTENIENDO IMÁGENES:"
-        );
-        console.error(error);
-        console.error("");
+        let parsedUrl;
 
-        sendJson(res, 502, {
-          success: false,
-          error:
-            "No se pudieron obtener las imágenes del capítulo",
-          details: error.message,
-        });
+        try {
+          parsedUrl =
+            new URL(
+              seriesUrl
+            );
+        } catch {
+          sendJson(
+            res,
+            400,
+            {
+              success: false,
+              error:
+                "La URL proporcionada no es válida",
+            }
+          );
+
+          return;
+        }
+
+        // Solo permitimos WeebCentral
+        if (
+          parsedUrl.hostname !==
+            "weebcentral.com" &&
+          parsedUrl.hostname !==
+            "www.weebcentral.com"
+        ) {
+          sendJson(
+            res,
+            400,
+            {
+              success: false,
+              error:
+                "La URL debe pertenecer a WeebCentral",
+            }
+          );
+
+          return;
+        }
+
+        try {
+          console.log("");
+          console.log(
+            "Obteniendo serie:"
+          );
+          console.log(
+            seriesUrl
+          );
+          console.log("");
+
+          const html =
+            await fetchHtml(
+              seriesUrl
+            );
+
+          console.log(
+            `HTML recibido: ${Buffer.byteLength(
+              html,
+              "utf8"
+            )} bytes`
+          );
+
+          const manga =
+            parseSeries(
+              html,
+              seriesUrl
+            );
+
+          console.log(
+            "Título:",
+            manga.title
+          );
+
+          console.log(
+            "Series ID:",
+            manga.seriesId
+          );
+
+          console.log(
+            "Sinopsis:",
+            manga.synopsis
+              ? "ENCONTRADA"
+              : "NO ENCONTRADA"
+          );
+
+          console.log("");
+
+          sendJson(
+            res,
+            200,
+            manga
+          );
+        } catch (error) {
+          console.error("");
+          console.error(
+            "ERROR WEBCENTRAL:"
+          );
+          console.error(
+            error
+          );
+          console.error("");
+
+          sendJson(
+            res,
+            502,
+            {
+              success: false,
+              error:
+                "No se pudo obtener la información de WeebCentral",
+              details:
+                error.message,
+            }
+          );
+        }
+
+        return;
       }
 
-      return;
+      // ========================================
+      // GET /chapters
+      // ========================================
+
+      if (
+        req.method === "GET" &&
+        requestUrl.pathname ===
+          "/chapters"
+      ) {
+        const seriesId =
+          requestUrl.searchParams.get(
+            "seriesId"
+          );
+
+        if (!seriesId) {
+          sendJson(
+            res,
+            400,
+            {
+              success: false,
+              error:
+                "Falta el parámetro ?seriesId=",
+            }
+          );
+
+          return;
+        }
+
+        if (
+          !/^[A-Z0-9]{26}$/.test(
+            seriesId
+          )
+        ) {
+          sendJson(
+            res,
+            400,
+            {
+              success: false,
+              error:
+                "El seriesId no es válido",
+            }
+          );
+
+          return;
+        }
+
+        const chaptersUrl =
+          `${WEBCENTRAL_BASE}/series/${seriesId}/full-chapter-list`;
+
+        try {
+          console.log("");
+          console.log(
+            "Obteniendo capítulos:"
+          );
+          console.log(
+            chaptersUrl
+          );
+          console.log("");
+
+          const html =
+            await fetchHtml(
+              chaptersUrl
+            );
+
+          console.log(
+            `HTML recibido: ${Buffer.byteLength(
+              html,
+              "utf8"
+            )} bytes`
+          );
+
+          const chapters =
+            parseChapters(
+              html
+            );
+
+          console.log(
+            "Capítulos encontrados:",
+            chapters.length
+          );
+
+          console.log("");
+
+          sendJson(
+            res,
+            200,
+            {
+              success: true,
+              seriesId,
+              totalChapters:
+                chapters.length,
+              chapters,
+            }
+          );
+        } catch (error) {
+          console.error("");
+          console.error(
+            "ERROR OBTENIENDO CAPÍTULOS:"
+          );
+          console.error(
+            error
+          );
+          console.error("");
+
+          sendJson(
+            res,
+            502,
+            {
+              success: false,
+              error:
+                "No se pudieron obtener los capítulos",
+              details:
+                error.message,
+            }
+          );
+        }
+
+        return;
+      }
+
+      // ========================================
+      // GET /chapter
+      // ========================================
+
+      if (
+        req.method === "GET" &&
+        requestUrl.pathname ===
+          "/chapter"
+      ) {
+        const chapterId =
+          requestUrl.searchParams.get(
+            "chapterId"
+          );
+
+        if (!chapterId) {
+          sendJson(
+            res,
+            400,
+            {
+              success: false,
+              error:
+                "Falta el parámetro ?chapterId=",
+            }
+          );
+
+          return;
+        }
+
+        if (
+          !/^[A-Z0-9]{26}$/.test(
+            chapterId
+          )
+        ) {
+          sendJson(
+            res,
+            400,
+            {
+              success: false,
+              error:
+                "El chapterId no es válido",
+            }
+          );
+
+          return;
+        }
+
+        const chapterUrl =
+          `${WEBCENTRAL_BASE}/chapters/${chapterId}/images` +
+          `?is_prev=False&current_page=1&reading_style=long_strip`;
+
+        try {
+          console.log("");
+          console.log(
+            "=========================================="
+          );
+          console.log(
+            "OBTENIENDO IMÁGENES DEL CAPÍTULO"
+          );
+          console.log(
+            "=========================================="
+          );
+          console.log(
+            "Chapter ID:",
+            chapterId
+          );
+          console.log(
+            "URL:",
+            chapterUrl
+          );
+          console.log("");
+
+          const html =
+            await fetchHtml(
+              chapterUrl
+            );
+
+          console.log(
+            `HTML recibido: ${Buffer.byteLength(
+              html,
+              "utf8"
+            )} bytes`
+          );
+
+          const images =
+            parseChapterImages(
+              html,
+              chapterUrl
+            );
+
+          console.log(
+            "Imágenes encontradas:",
+            images.length
+          );
+
+          console.log("");
+
+          sendJson(
+            res,
+            200,
+            {
+              success: true,
+              chapterId,
+              chapterUrl,
+              totalImages:
+                images.length,
+              images,
+            }
+          );
+        } catch (error) {
+          console.error("");
+          console.error(
+            "ERROR OBTENIENDO IMÁGENES:"
+          );
+          console.error(
+            error
+          );
+          console.error("");
+
+          sendJson(
+            res,
+            502,
+            {
+              success: false,
+              error:
+                "No se pudieron obtener las imágenes del capítulo",
+              details:
+                error.message,
+            }
+          );
+        }
+
+        return;
+      }
+
+      // ========================================
+      // 404
+      // ========================================
+
+      sendJson(
+        res,
+        404,
+        {
+          success: false,
+          error:
+            "Endpoint no encontrado",
+          path:
+            requestUrl.pathname,
+        }
+      );
     }
-
-    // ========================================
-    // 404
-    // ========================================
-
-    sendJson(res, 404, {
-      success: false,
-      error: "Endpoint no encontrado",
-      path: requestUrl.pathname,
-    });
-  }
-);
+  );
 
 // ==========================================
 // INICIAR SERVIDOR
@@ -712,7 +1043,9 @@ server.listen(
 
     console.log("");
 
-    console.log("Estado: ONLINE");
+    console.log(
+      "Estado: ONLINE"
+    );
 
     console.log("");
 

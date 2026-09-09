@@ -1193,7 +1193,7 @@ return ( <main className="min-h-screen bg-neutral-950 text-neutral-100 p-6 md:p-
         ← Volver a la Biblioteca
       </Link>
 
-      <span className="text-2xl font-black tracking-wider text-white">
+      <span className="text-3xl sm:text-4xl font-black tracking-[-0.09em] leading-none text-white">
         TOM
         <span className="text-pink-500">
           O

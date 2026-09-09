@@ -1,7 +1,18 @@
 import { NextResponse } from 'next/server';
-import * as cheerio from 'cheerio';
 
-const WEBCENTRAL = 'https://weebcentral.com';
+const CONNECTOR_URL =
+  process.env.TOMO_CONNECTOR_URL ||
+  'http://127.0.0.1:3001';
+
+const WEBCENTRAL_HOSTS = [
+  'weebcentral.com',
+  'www.weebcentral.com',
+];
+
+const IMAGE_HOSTS = [
+  'official.lowee.us',
+  'temp.compsci88.com',
+];
 
 type Chapter = {
   id: string;
@@ -9,473 +20,154 @@ type Chapter = {
   url: string;
 };
 
-function absoluteUrl(url: string, base: string = WEBCENTRAL): string {
-  if (!url) return '';
+type ConnectorMangaResponse = {
+  success: boolean;
+  seriesId: string;
+  title: string;
+  cover: string;
+  synopsis: string;
+  source?: string;
+  url?: string;
+  pageBytes?: number;
+  hasPageContent?: boolean;
+  error?: string;
+  details?: string;
+};
+
+type ConnectorChaptersResponse = {
+  success: boolean;
+  seriesId: string;
+  totalChapters: number;
+  chapters: Chapter[];
+  error?: string;
+  details?: string;
+};
+
+type ConnectorChapterResponse = {
+  success: boolean;
+  chapterId: string;
+  chapterUrl: string;
+  totalImages: number;
+  images: string[];
+  error?: string;
+  details?: string;
+};
+
+// ============================================================
+// CONECTOR
+// ============================================================
+
+async function connectorFetch<T>(
+  path: string
+): Promise<T> {
+  const response = await fetch(
+    `${CONNECTOR_URL}${path}`,
+    {
+      method: 'GET',
+      cache: 'no-store',
+    }
+  );
+
+  const text = await response.text();
+
+  let data: T;
 
   try {
-    return new URL(url, base).href;
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `El connector devolvió una respuesta inválida. Status: ${response.status}`
+    );
+  }
+
+  if (!response.ok) {
+    const errorData = data as {
+      error?: string;
+      details?: string;
+    };
+
+    throw new Error(
+      errorData.details ||
+        errorData.error ||
+        `El connector respondió HTTP ${response.status}`
+    );
+  }
+
+  return data;
+}
+
+// ============================================================
+// VALIDAR URL DE WEBCENTRAL
+// ============================================================
+
+function isValidWeebCentralUrl(
+  value: string
+): boolean {
+  try {
+    const parsed = new URL(value);
+
+    return WEBCENTRAL_HOSTS.includes(
+      parsed.hostname.toLowerCase()
+    );
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================
+// OBTENER SERIES ID
+// ============================================================
+
+function getSeriesId(
+  seriesUrl: string
+): string {
+  try {
+    const parsed = new URL(seriesUrl);
+
+    const match =
+      parsed.pathname.match(
+        /\/series\/([A-Z0-9]{26})/i
+      );
+
+    return match?.[1] || '';
   } catch {
     return '';
   }
 }
 
-function getImageSource(
-  $: cheerio.CheerioAPI,
-  el: any
+// ============================================================
+// OBTENER CHAPTER ID
+// ============================================================
+
+function getChapterId(
+  chapterUrl: string
 ): string {
-  const attrs = [
-    'src',
-    'data-src',
-    'data-lazy-src',
-    'data-original',
-    'data-url',
-    'data-image',
-  ];
-
-  for (const attr of attrs) {
-    const value = $(el).attr(attr);
-
-    if (
-      value &&
-      value.trim() &&
-      !value.startsWith('data:image')
-    ) {
-      return value.trim();
-    }
-  }
-
-  return '';
-}
-
-async function fetchWeebCentral(
-  url: string,
-  options: RequestInit = {}
-) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
-      'Accept':
-        'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      'Accept-Language':
-        'es-MX,es;q=0.9,en;q=0.8',
-      'Referer':
-        'https://weebcentral.com/',
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-
-    console.error('WEBCENTRAL ERROR:', {
-      url,
-      status: response.status,
-      statusText: response.statusText,
-      body: body.slice(0, 1000),
-    });
-
-    throw new Error(
-      `No se pudo cargar el manga. Status: ${response.status}`
-    );
-  }
-
-  return response;
-}
-
-async function getManga(seriesUrl: string) {
-  const response = await fetchWeebCentral(seriesUrl);
-
-  if (!response.ok) {
-    throw new Error(
-      `No se pudo cargar el manga. Status: ${response.status}`
-    );
-  }
-
-  const html = await response.text();
-  const $ = cheerio.load(html);
-
-  // ------------------------------------------------------------
-  // TÍTULO
-  // ------------------------------------------------------------
-
-  let title =
-    $('h1').first().text().trim() ||
-    $('title').first().text().trim() ||
-    'Manga sin título';
-
-  title = title.replace(/\s+/g, ' ').trim();
-
-  // ------------------------------------------------------------
-  // PORTADA
-  // ------------------------------------------------------------
-
-  let cover = '';
-
-  // Primero intentamos encontrar imágenes que claramente parezcan
-  // ser la portada.
-  $('img').each((_, el) => {
-    if (cover) return;
-
-    const src = getImageSource($, el);
-
-    if (!src) return;
-
-    const absolute = absoluteUrl(src, seriesUrl);
-
-    if (!absolute) return;
-
-    const lower = absolute.toLowerCase();
-
-    if (
-      lower.includes('cover') ||
-      lower.includes('thumbnail') ||
-      lower.includes('/media/')
-    ) {
-      cover = absolute;
-    }
-  });
-
-  // Si no encontramos una portada específica, usamos la primera
-  // imagen válida de la página.
-  if (!cover) {
-    $('img').each((_, el) => {
-      if (cover) return;
-
-      const src = getImageSource($, el);
-
-      if (!src) return;
-
-      const absolute = absoluteUrl(src, seriesUrl);
-
-      if (!absolute) return;
-
-      cover = absolute;
-    });
-  }
-
-  // ------------------------------------------------------------
-  // SINOPSIS
-  // ------------------------------------------------------------
-
-  let synopsis = '';
-
-  const synopsisSelectors = [
-    '[class*="description"]',
-    '[class*="synopsis"]',
-    '[id*="description"]',
-    '[id*="synopsis"]',
-  ];
-
-  for (const selector of synopsisSelectors) {
-    const text = $(selector)
-      .first()
-      .text()
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (text.length > 30) {
-      synopsis = text;
-      break;
-    }
-  }
-
-  // Fallback: buscar párrafos relativamente largos.
-  if (!synopsis) {
-    $('p').each((_, el) => {
-      if (synopsis) return;
-
-      const text = $(el)
-        .text()
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      if (text.length > 50) {
-        synopsis = text;
-      }
-    });
-  }
-
-        // ------------------------------------------------------------
-      // CAPÍTULOS
-      // ------------------------------------------------------------
-
-      const chapters: Chapter[] = [];
-      const seenUrls = new Set<string>();
-
-      // WeebCentral no muestra todos los capítulos en la página
-      // principal del manga. La lista completa está en:
-      // /series/{id}/full-chapter-list
-
-      let fullChapterListUrl = '';
-
-      try {
-        const parsedSeriesUrl = new URL(seriesUrl);
-        const match = parsedSeriesUrl.pathname.match(
-          /\/series\/([^/]+)/i
-        );
-
-        if (match?.[1]) {
-          fullChapterListUrl =
-            `${WEBCENTRAL}/series/${match[1]}/full-chapter-list`;
-        }
-      } catch {
-        // Fallback: usamos la URL original si algo falla.
-      }
-
-      if (!fullChapterListUrl) {
-        fullChapterListUrl =
-          `${seriesUrl.replace(/\/$/, '')}/full-chapter-list`;
-      }
-
-      try {
-        const chaptersResponse =
-          await fetchWeebCentral(fullChapterListUrl);
-
-        if (chaptersResponse.ok) {
-          const chaptersHtml =
-            await chaptersResponse.text();
-
-          const chaptersPage =
-            cheerio.load(chaptersHtml);
-
-          chaptersPage(
-            'a[href*="/chapters/"]'
-          ).each((_, el) => {
-            const href =
-              chaptersPage(el).attr('href');
-
-            if (!href) return;
-
-            const fullChapterUrl =
-              absoluteUrl(
-                href,
-                fullChapterListUrl
-              );
-
-            if (!fullChapterUrl) return;
-
-            if (seenUrls.has(fullChapterUrl)) {
-              return;
-            }
-
-            seenUrls.add(fullChapterUrl);
-
-            const rawText =
-              chaptersPage(el)
-                .text()
-                .replace(/\s+/g, ' ')
-                .trim();
-
-            // --------------------------------------------------------
-            // ID ÚNICO DEL CAPÍTULO
-            // --------------------------------------------------------
-
-            let chapterId = '';
-
-            try {
-              const parsed =
-                new URL(fullChapterUrl);
-
-              const match =
-                parsed.pathname.match(
-                  /\/chapters\/([^/]+)/i
-                );
-
-              if (match?.[1]) {
-                chapterId = match[1];
-              }
-            } catch {
-              // Fallback abajo.
-            }
-
-            if (!chapterId) {
-              chapterId = fullChapterUrl;
-            }
-
-            // --------------------------------------------------------
-            // NOMBRE DEL CAPÍTULO
-            // --------------------------------------------------------
-
-            const chapterNumber =
-              rawText.match(
-                /(?:Chapter|Ch\.?|Episode|Ep\.?)\s*([\d]+(?:\.[\d]+)?)/i
-              );
-
-            let chapterTitle = rawText;
-
-            if (chapterNumber?.[1]) {
-              chapterTitle =
-                `Capítulo ${chapterNumber[1]}`;
-            }
-
-            if (!chapterTitle) {
-              chapterTitle = 'Capítulo';
-            }
-
-            chapters.push({
-              id: chapterId,
-              title: chapterTitle,
-              url: fullChapterUrl,
-            });
-          });
-        }
-      } catch (error) {
-        console.error(
-          'Error cargando lista completa de capítulos:',
-          error
-        );
-      }
-
-      // ------------------------------------------------------------
-      // FALLBACK
-      // ------------------------------------------------------------
-
-      // Si /full-chapter-list falla, usamos la página principal
-      // para no dejar el manga sin capítulos.
-
-      if (chapters.length === 0) {
-        $('a[href*="/chapters/"]').each((_, el) => {
-          const href = $(el).attr('href');
-
-          if (!href) return;
-
-          const fullChapterUrl =
-            absoluteUrl(href, seriesUrl);
-
-          if (!fullChapterUrl) return;
-
-          if (seenUrls.has(fullChapterUrl)) {
-            return;
-          }
-
-          seenUrls.add(fullChapterUrl);
-
-          const rawText =
-            $(el)
-              .text()
-              .replace(/\s+/g, ' ')
-              .trim();
-
-          let chapterId = '';
-
-          try {
-            const parsed =
-              new URL(fullChapterUrl);
-
-            const match =
-              parsed.pathname.match(
-                /\/chapters\/([^/]+)/i
-              );
-
-            if (match?.[1]) {
-              chapterId = match[1];
-            }
-          } catch {
-            // Fallback abajo.
-          }
-
-          if (!chapterId) {
-            chapterId = fullChapterUrl;
-          }
-
-          const chapterNumber =
-            rawText.match(
-              /(?:Chapter|Ch\.?|Episode|Ep\.?)\s*([\d]+(?:\.[\d]+)?)/i
-            );
-
-          let chapterTitle = rawText;
-
-          if (chapterNumber?.[1]) {
-            chapterTitle =
-              `Capítulo ${chapterNumber[1]}`;
-          }
-
-          if (!chapterTitle) {
-            chapterTitle = 'Capítulo';
-          }
-
-          chapters.push({
-            id: chapterId,
-            title: chapterTitle,
-            url: fullChapterUrl,
-          });
-        });
-      }
-
-  // ------------------------------------------------------------
-  // ORDENAR CAPÍTULOS
-  // ------------------------------------------------------------
-
-  chapters.sort((a, b) => {
-    const getNumber = (title: string) => {
-      const match = title.match(
-        /(\d+(?:\.\d+)?)/
+  try {
+    const parsed = new URL(chapterUrl);
+
+    const match =
+      parsed.pathname.match(
+        /\/chapters\/([A-Z0-9]{26})/i
       );
 
-      return match ? Number(match[1]) : Infinity;
-    };
-
-    return getNumber(a.title) - getNumber(b.title);
-  });
-
-  return {
-    title,
-    cover,
-    synopsis,
-    totalChapters: chapters.length,
-    chapters,
-  };
-}
-
-async function getChapterImages(
-  chapterUrl: string
-): Promise<string[]> {
-  const cleanChapterUrl = chapterUrl.replace(/\/$/, '');
-
-  const imagesUrl = `${cleanChapterUrl}/images`;
-
-  const response = await fetchWeebCentral(imagesUrl);
-
-  if (!response.ok) {
-    throw new Error(
-      `No se pudieron cargar las imágenes. Status: ${response.status}`
-    );
+    return match?.[1] || '';
+  } catch {
+    return '';
   }
-
-  const html = await response.text();
-  const $ = cheerio.load(html);
-
-  const images: string[] = [];
-  const seen = new Set<string>();
-
-  $('img').each((_, el) => {
-    const src = getImageSource($, el);
-
-    if (!src) return;
-
-    const imageUrl = absoluteUrl(
-      src,
-      imagesUrl
-    );
-
-    if (!imageUrl) return;
-
-    if (seen.has(imageUrl)) return;
-
-    seen.add(imageUrl);
-    images.push(imageUrl);
-  });
-
-  return images;
 }
 
-async function proxyImage(imageUrl: string) {
-  if (
-    !imageUrl.startsWith('http://') &&
-    !imageUrl.startsWith('https://')
-  ) {
+// ============================================================
+// PROXY DE IMAGEN
+// ============================================================
+
+async function proxyImage(
+  imageUrl: string
+) {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(imageUrl);
+  } catch {
     return NextResponse.json(
       {
         error: 'URL de imagen inválida',
@@ -486,22 +178,60 @@ async function proxyImage(imageUrl: string) {
     );
   }
 
-  try {
-    const response = await fetch(imageUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
-        Referer: `${WEBCENTRAL}/`,
-        Accept:
-          'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+  if (
+    parsedUrl.protocol !== 'https:'
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'La imagen debe utilizar HTTPS',
       },
-      cache: 'no-store',
-    });
+      {
+        status: 400,
+      }
+    );
+  }
+
+  if (
+    !IMAGE_HOSTS.includes(
+      parsedUrl.hostname.toLowerCase()
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'El dominio de la imagen no está permitido',
+      },
+      {
+        status: 403,
+      }
+    );
+  }
+
+  try {
+    const response = await fetch(
+      parsedUrl.toString(),
+      {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
+
+          Referer:
+            'https://weebcentral.com/',
+
+          Accept:
+            'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        },
+
+        cache: 'no-store',
+      }
+    );
 
     if (!response.ok) {
       return NextResponse.json(
         {
-          error: `No se pudo obtener la imagen. Status: ${response.status}`,
+          error:
+            `No se pudo obtener la imagen. Status: ${response.status}`,
         },
         {
           status: response.status,
@@ -510,19 +240,27 @@ async function proxyImage(imageUrl: string) {
     }
 
     const contentType =
-      response.headers.get('content-type') ||
-      'image/jpeg';
+      response.headers.get(
+        'content-type'
+      ) || 'image/jpeg';
 
-    const buffer = await response.arrayBuffer();
+    const buffer =
+      await response.arrayBuffer();
 
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control':
-          'public, max-age=86400, s-maxage=86400',
-      },
-    });
+    return new NextResponse(
+      buffer,
+      {
+        status: 200,
+
+        headers: {
+          'Content-Type':
+            contentType,
+
+          'Cache-Control':
+            'public, max-age=86400, s-maxage=86400',
+        },
+      }
+    );
   } catch (error) {
     console.error(
       'Error al hacer proxy de imagen:',
@@ -531,7 +269,8 @@ async function proxyImage(imageUrl: string) {
 
     return NextResponse.json(
       {
-        error: 'Error al obtener la imagen',
+        error:
+          'Error al obtener la imagen',
       },
       {
         status: 500,
@@ -539,6 +278,10 @@ async function proxyImage(imageUrl: string) {
     );
   }
 }
+
+// ============================================================
+// GET
+// ============================================================
 
 export async function GET(
   request: Request
@@ -553,15 +296,16 @@ export async function GET(
     const type =
       searchParams.get('type');
 
-    // ----------------------------------------------------------
-    // PROXY DE IMAGEN
-    // ----------------------------------------------------------
+    // ========================================================
+    // IMAGEN
+    // ========================================================
 
     if (type === 'image') {
       if (!targetUrl) {
         return NextResponse.json(
           {
-            error: 'Falta la URL de la imagen',
+            error:
+              'Falta la URL de la imagen',
           },
           {
             status: 400,
@@ -572,9 +316,9 @@ export async function GET(
       return proxyImage(targetUrl);
     }
 
-    // ----------------------------------------------------------
-    // VALIDAR URL
-    // ----------------------------------------------------------
+    // ========================================================
+    // VALIDAR URL GENERAL
+    // ========================================================
 
     if (!targetUrl) {
       return NextResponse.json(
@@ -587,36 +331,89 @@ export async function GET(
       );
     }
 
-    // ----------------------------------------------------------
-    // OBTENER IMÁGENES DE CAPÍTULO
-    // ----------------------------------------------------------
+    const cleanUrl =
+      targetUrl.trim();
+
+    // ========================================================
+    // CAPÍTULO
+    // ========================================================
 
     if (type === 'chapter') {
-      const images =
-        await getChapterImages(targetUrl);
+      if (
+        !isValidWeebCentralUrl(
+          cleanUrl
+        )
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'La URL del capítulo no pertenece a WeebCentral',
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      const chapterId =
+        getChapterId(cleanUrl);
+
+      if (!chapterId) {
+        return NextResponse.json(
+          {
+            error:
+              'No se pudo obtener el ID del capítulo',
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      console.log(
+        'Solicitando capítulo al connector:',
+        chapterId
+      );
+
+      const chapter =
+        await connectorFetch<ConnectorChapterResponse>(
+          `/chapter?chapterId=${encodeURIComponent(
+            chapterId
+          )}`
+        );
+
+      if (
+        !chapter.success ||
+        !Array.isArray(
+          chapter.images
+        )
+      ) {
+        throw new Error(
+          chapter.error ||
+            'El connector no devolvió imágenes'
+        );
+      }
 
       return NextResponse.json({
-        images: images.map(
-          (imageUrl) =>
-            `/api/manga?type=image&url=${encodeURIComponent(
-              imageUrl
-            )}`
-        ),
+        images:
+          chapter.images.map(
+            (imageUrl) =>
+              `/api/manga?type=image&url=${encodeURIComponent(
+                imageUrl
+              )}`
+          ),
       });
     }
 
-    // ----------------------------------------------------------
-    // OBTENER INFORMACIÓN DEL MANGA
-    // ----------------------------------------------------------
+    // ========================================================
+    // MANGA
+    // ========================================================
 
-    const cleanUrl = targetUrl.trim();
-
-    const seriesMatch =
-      cleanUrl.match(
-        /\/series\/([a-zA-Z0-9]+)/
-      );
-
-    if (!seriesMatch) {
+    if (
+      !isValidWeebCentralUrl(
+        cleanUrl
+      )
+    ) {
       return NextResponse.json(
         {
           error:
@@ -628,31 +425,152 @@ export async function GET(
       );
     }
 
+    const seriesId =
+      getSeriesId(cleanUrl);
+
+    if (!seriesId) {
+      return NextResponse.json(
+        {
+          error:
+            'No se pudo obtener el ID de la serie.',
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    console.log(
+      '=========================================='
+    );
+
+    console.log(
+      'SOLICITANDO MANGA AL CONNECTOR'
+    );
+
+    console.log(
+      'Series ID:',
+      seriesId
+    );
+
+    console.log(
+      'URL:',
+      cleanUrl
+    );
+
+    console.log(
+      'Connector:',
+      CONNECTOR_URL
+    );
+
+    console.log(
+      '=========================================='
+    );
+
+    // ========================================================
+    // INFORMACIÓN DEL MANGA
+    // ========================================================
+
     const manga =
-      await getManga(cleanUrl);
-
-    // ----------------------------------------------------------
-    // PROXY PARA LA PORTADA
-    // ----------------------------------------------------------
-
-    const proxiedCover = manga.cover
-      ? `/api/manga?type=image&url=${encodeURIComponent(
-          manga.cover
+      await connectorFetch<ConnectorMangaResponse>(
+        `/manga?url=${encodeURIComponent(
+          cleanUrl
         )}`
-      : '';
+      );
 
-    return NextResponse.json({
-      title: manga.title,
-      cover: proxiedCover,
-      synopsis: manga.synopsis,
+    if (!manga.success) {
+      throw new Error(
+        manga.error ||
+          'El connector no pudo obtener el manga'
+      );
+    }
+
+    // ========================================================
+    // CAPÍTULOS
+    // ========================================================
+
+    console.log(
+      'Solicitando capítulos al connector...'
+    );
+
+    const chapterData =
+      await connectorFetch<ConnectorChaptersResponse>(
+        `/chapters?seriesId=${encodeURIComponent(
+          manga.seriesId || seriesId
+        )}`
+      );
+
+    if (
+      !chapterData.success ||
+      !Array.isArray(
+        chapterData.chapters
+      )
+    ) {
+      throw new Error(
+        chapterData.error ||
+          'El connector no pudo obtener los capítulos'
+      );
+    }
+
+    // ========================================================
+    // PORTADA
+    // ========================================================
+
+    const proxiedCover =
+      manga.cover
+        ? `/api/manga?type=image&url=${encodeURIComponent(
+            manga.cover
+          )}`
+        : '';
+
+    // ========================================================
+    // RESPUESTA FINAL DE TOMO
+    // ========================================================
+
+    const response = {
+      title:
+        manga.title ||
+        'Manga sin título',
+
+      cover:
+        proxiedCover,
+
+      synopsis:
+        manga.synopsis || '',
+
       totalChapters:
-        manga.totalChapters,
-      chapters: manga.chapters,
-    });
+        chapterData.chapters.length,
+
+      chapters:
+        chapterData.chapters,
+    };
+
+    console.log(
+      'Manga obtenido:',
+      response.title
+    );
+
+    console.log(
+      'Capítulos:',
+      response.totalChapters
+    );
+
+    return NextResponse.json(
+      response
+    );
   } catch (error) {
     console.error(
-      'Error en /api/manga:',
-      error
+      '=========================================='
+    );
+
+    console.error(
+      'ERROR EN /api/manga'
+    );
+
+    console.error(error);
+
+    console.error(
+      '=========================================='
     );
 
     return NextResponse.json(
